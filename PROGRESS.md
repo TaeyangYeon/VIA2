@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 5 (완료)
+## 현재 진행 단계: Step 6 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -10,7 +10,7 @@
 
 ## Phase 2: 백엔드 기반 + AI Adapter
 - [x] Step 5: FastAPI 초기화 + Health 엔드포인트
-- [ ] Step 6: AI Engine Adapter + 로컬 Ollama 어댑터
+- [x] Step 6: AI Engine Adapter + 로컬 Ollama 어댑터
 - [ ] Step 7: Remote AI Adapter
 - [ ] Step 8: Engine 설정 API
 - [ ] Step 9: 이미지 업로드 + 저장소 API
@@ -67,6 +67,100 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 6 완료 내역
+
+**설치된 패키지 버전** (pyenv Python 3.11.15):
+- `httpx` 0.28.1 (이미 설치됨 — requirements.txt에 `httpx>=0.27.0` 추가)
+
+**생성/수정된 파일**:
+- `backend/services/ai_adapter/__init__.py` (신규 생성 — 패키지 init, BaseAIAdapter·OllamaAdapter 외부 노출)
+- `backend/services/ai_adapter/base.py` (신규 생성 — 추상 기반 클래스 BaseAIAdapter: 4개 abstract 메서드 + name 프로퍼티)
+- `backend/services/ai_adapter/ollama_adapter.py` (신규 생성 — OllamaAdapter 구현체: httpx AsyncClient로 Ollama REST API 호출)
+- `tests/test_ollama_adapter.py` (신규 생성 — 17개 테스트: 16 passed + 1 skipped(integration))
+- `requirements.txt` (`httpx>=0.27.0` 추가)
+- `pyproject.toml` (`markers = ["integration: ..."]` 등록으로 PytestUnknownMarkWarning 제거)
+
+**pytest 결과** (전체 49개: 44 passed, 5 skipped):
+```
+44 passed, 5 skipped in 2.06s
+tests/test_api_health.py::test_health_endpoint_returns_200 PASSED
+tests/test_api_health.py::test_health_response_status_is_ok PASSED
+tests/test_api_health.py::test_health_response_contains_version PASSED
+tests/test_api_health.py::test_cors_headers_present_on_health PASSED
+tests/test_libraries.py::test_opencv_import PASSED
+tests/test_libraries.py::test_numpy_import PASSED
+tests/test_libraries.py::test_torch_import PASSED
+tests/test_libraries.py::test_opencv_image_operations PASSED
+tests/test_libraries.py::test_torch_tensor_operations PASSED
+tests/test_libraries.py::test_opencv_basic_processing PASSED
+tests/test_libraries.py::test_numpy_opencv_interop PASSED
+tests/test_model_loading.py::test_generate_colab_notebook_script_exists PASSED
+tests/test_model_loading.py::test_verify_vision_models_notebook_exists PASSED
+tests/test_model_loading.py::test_model_setup_doc_exists PASSED
+tests/test_model_loading.py::test_generate_script_valid_python_syntax PASSED
+tests/test_model_loading.py::test_model_setup_doc_contains_all_model_sections PASSED
+tests/test_model_loading.py::test_notebook_is_valid_nbformat PASSED
+tests/test_model_loading.py::test_notebook_has_minimum_15_cells PASSED
+tests/test_model_loading.py::test_notebook_code_cells_contain_all_model_names PASSED
+tests/test_ollama.py::test_ollama_is_running SKIPPED (Ollama 서버 미실행)
+tests/test_ollama.py::test_qwen_coder_model_exists SKIPPED (Ollama 서버 미실행)
+tests/test_ollama.py::test_text_generation SKIPPED (Ollama 서버 미실행)
+tests/test_ollama.py::test_json_output_parsing SKIPPED (Ollama 서버 미실행)
+tests/test_ollama_adapter.py::test_base_ai_adapter_cannot_be_instantiated_directly PASSED
+tests/test_ollama_adapter.py::test_ollama_adapter_is_a_subclass_of_base PASSED
+tests/test_ollama_adapter.py::test_ollama_adapter_implements_all_abstract_methods PASSED
+tests/test_ollama_adapter.py::test_ollama_adapter_name_property_returns_ollama PASSED
+tests/test_ollama_adapter.py::test_default_base_url_is_localhost_11434 PASSED
+tests/test_ollama_adapter.py::test_custom_base_url_is_stored PASSED
+tests/test_ollama_adapter.py::test_custom_timeout_is_stored PASSED
+tests/test_ollama_adapter.py::test_generate_text_returns_response_string PASSED
+tests/test_ollama_adapter.py::test_generate_text_payload_contains_model_prompt_and_stream_false PASSED
+tests/test_ollama_adapter.py::test_generate_json_returns_parsed_dict PASSED
+tests/test_ollama_adapter.py::test_generate_json_raises_value_error_on_invalid_json_response PASSED
+tests/test_ollama_adapter.py::test_analyze_image_returns_description_string PASSED
+tests/test_ollama_adapter.py::test_analyze_image_encodes_image_as_base64_in_payload PASSED
+tests/test_ollama_adapter.py::test_health_check_returns_true_when_ollama_responds_200 PASSED
+tests/test_ollama_adapter.py::test_health_check_returns_false_on_connection_error PASSED
+tests/test_ollama_adapter.py::test_generate_text_raises_timeout_error_on_httpx_timeout PASSED
+tests/test_ollama_adapter.py::test_integration_generate_text_with_qwen_coder SKIPPED (Ollama 미실행)
+tests/test_project_structure.py::test_python_version_is_311 PASSED
+tests/test_project_structure.py::test_required_directories_exist PASSED
+tests/test_project_structure.py::test_required_init_files_exist PASSED
+tests/test_project_structure.py::test_backend_placeholder_files_exist PASSED
+tests/test_project_structure.py::test_pyproject_toml_exists_and_contains_via2 PASSED
+tests/test_project_structure.py::test_requirements_txt_exists PASSED
+tests/test_project_structure.py::test_gitignore_exists PASSED
+tests/test_project_structure.py::test_readme_exists PASSED
+tests/test_project_structure.py::test_python_version_file_exists PASSED
+```
+
+**이슈 및 해결 사항**:
+- `@pytest.mark.integration` 사용 시 `PytestUnknownMarkWarning` 발생 → `pyproject.toml`의 `[tool.pytest.ini_options]`에 `markers` 항목 추가로 해결
+
+**BaseAIAdapter 인터페이스 메서드 목록**:
+| 메서드 | 시그니처 | 설명 |
+|--------|---------|------|
+| `name` | `@property → str` | 어댑터 이름 반환 |
+| `generate_text` | `(prompt, model, system_prompt=None, temperature=0.7, max_tokens=2048) → str` | 텍스트 생성 |
+| `generate_json` | `(prompt, model, schema=None, system_prompt=None) → dict` | JSON 구조 생성 |
+| `analyze_image` | `(image_data: bytes, prompt, model) → str` | 멀티모달 이미지 분석 (VLM) |
+| `health_check` | `() → bool` | 어댑터 백엔드 가용성 확인 |
+
+**OllamaAdapter 구현 상세**:
+- **기본 URL**: `http://127.0.0.1:11434` (설정 가능)
+- **기본 타임아웃**: 120.0초 (Intel Mac 느린 추론 대응), health_check는 10.0초 고정
+- **API 엔드포인트**:
+  - `generate_text` / `generate_json` / `analyze_image`: `POST /api/generate` (stream=false)
+  - `health_check`: `GET /api/tags`
+- **JSON 모드**: `generate_json`은 `format="json"` 전달 → 응답을 `json.loads()` 파싱
+- **이미지 전송**: `analyze_image`는 `base64.b64encode(image_data)` → `images: [b64_str]`
+- **에러 처리**:
+  - `httpx.TimeoutException` → Python 내장 `TimeoutError` 로 변환 (re-raise)
+  - `httpx.ConnectError` → `health_check`에서 `False` 반환
+  - 잘못된 JSON 응답 → `ValueError("Invalid JSON response from Ollama: ...")`
 
 ---
 

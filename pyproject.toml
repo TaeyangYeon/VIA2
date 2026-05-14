@@ -13,3 +13,6 @@ dev = ["pytest>=7.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: tests that require external services (Ollama, remote APIs)",
+]
