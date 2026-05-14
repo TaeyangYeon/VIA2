@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 6 (완료)
+## 현재 진행 단계: Step 7 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -11,7 +11,7 @@
 ## Phase 2: 백엔드 기반 + AI Adapter
 - [x] Step 5: FastAPI 초기화 + Health 엔드포인트
 - [x] Step 6: AI Engine Adapter + 로컬 Ollama 어댑터
-- [ ] Step 7: Remote AI Adapter
+- [x] Step 7: Remote AI Adapter
 - [ ] Step 8: Engine 설정 API
 - [ ] Step 9: 이미지 업로드 + 저장소 API
 - [ ] Step 10: ROI 설정 API + Config + Directive API
@@ -67,6 +67,81 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 7 완료 내역
+
+**설치/추가된 패키지**: 없음 (httpx, asyncio 모두 기존 환경에 포함됨)
+
+**생성/수정된 파일**:
+- `backend/services/ai_adapter/remote_adapter.py` (신규 생성 — RemoteAdapter 구현체)
+- `backend/services/ai_adapter/__init__.py` (수정 — RemoteAdapter 추가 export)
+- `tests/test_remote_adapter.py` (신규 생성 — 27개 테스트, 전부 통과)
+
+**pytest 결과** (전체 76개: 71 passed, 5 skipped):
+```
+71 passed, 5 skipped in 2.29s
+tests/test_remote_adapter.py::test_remote_adapter_is_subclass_of_base PASSED
+tests/test_remote_adapter.py::test_remote_adapter_implements_all_abstract_methods PASSED
+tests/test_remote_adapter.py::test_name_property_returns_remote PASSED
+tests/test_remote_adapter.py::test_constructor_stores_base_url PASSED
+tests/test_remote_adapter.py::test_constructor_stores_auth_token PASSED
+tests/test_remote_adapter.py::test_constructor_stores_timeout PASSED
+tests/test_remote_adapter.py::test_constructor_defaults_auth_token_to_none PASSED
+tests/test_remote_adapter.py::test_constructor_defaults_timeout_to_300 PASSED
+tests/test_remote_adapter.py::test_generate_text_returns_response_string PASSED
+tests/test_remote_adapter.py::test_generate_text_sends_correct_payload PASSED
+tests/test_remote_adapter.py::test_generate_text_includes_auth_header_when_token_provided PASSED
+tests/test_remote_adapter.py::test_generate_text_no_auth_header_when_no_token PASSED
+tests/test_remote_adapter.py::test_generate_json_sends_format_json_in_payload PASSED
+tests/test_remote_adapter.py::test_generate_json_returns_parsed_dict PASSED
+tests/test_remote_adapter.py::test_generate_json_raises_value_error_on_invalid_json PASSED
+tests/test_remote_adapter.py::test_analyze_image_returns_response_string PASSED
+tests/test_remote_adapter.py::test_analyze_image_sends_base64_encoded_image PASSED
+tests/test_remote_adapter.py::test_health_check_returns_true_on_200 PASSED
+tests/test_remote_adapter.py::test_health_check_returns_false_on_non_200 PASSED
+tests/test_remote_adapter.py::test_health_check_returns_false_on_connect_error PASSED
+tests/test_remote_adapter.py::test_health_check_uses_short_timeout PASSED
+tests/test_remote_adapter.py::test_retry_on_5xx_succeeds_after_two_failures PASSED
+tests/test_remote_adapter.py::test_retry_on_5xx_raises_runtime_error_after_max_retries PASSED
+tests/test_remote_adapter.py::test_retry_on_timeout_raises_timeout_error_after_max_retries PASSED
+tests/test_remote_adapter.py::test_no_retry_on_4xx_raises_runtime_error_immediately PASSED
+tests/test_remote_adapter.py::test_retry_uses_exponential_backoff PASSED
+tests/test_remote_adapter.py::test_connect_error_raises_connection_error_with_url PASSED
+(기존 44 passed, 5 skipped — 회귀 없음)
+```
+
+**이슈 및 해결 사항**: 없음 (TDD Red→Green 한 사이클로 완료)
+
+**RemoteAdapter 생성자 시그니처**:
+```python
+RemoteAdapter(base_url: str, auth_token: str | None = None, timeout: float = 300.0)
+```
+- `base_url`: Colab/Azure/커스텀 엔드포인트 URL (예: `https://xxx.ngrok.io`)
+- `auth_token`: 선택적 Bearer 토큰 — 전달 시 모든 요청 헤더에 `Authorization: Bearer {token}` 추가
+- `timeout`: 기본 300.0초 (Colab cold start 대응), health_check는 15.0초 고정
+
+**RemoteAdapter 구현 상세**:
+- **엔드포인트**: `POST {base_url}/generate`, `GET {base_url}/health`
+- **내부 `_post(payload)` 헬퍼**: generate_text/generate_json/analyze_image 공유 사용
+- `generate_json`: payload에 `"format": "json"` 추가, response 필드를 `json.loads()`로 파싱
+- `analyze_image`: image_data를 `base64.b64encode().decode("utf-8")`해서 `"images": [b64]`로 전송
+
+**재시도 로직**:
+- 최대 재시도 횟수: 2회 (총 3회 시도)
+- 재시도 트리거: HTTP 5xx 응답, `httpx.TimeoutException`
+- 백오프 간격: 1초 → 2초 (`asyncio.sleep` 사용)
+- 재시도 없음: HTTP 4xx 응답, `httpx.ConnectError`
+
+**에러 핸들링 매핑**:
+| 원인 | 발생 예외 |
+|------|----------|
+| `httpx.TimeoutException` (재시도 소진) | `TimeoutError("Remote AI server request timed out")` |
+| `httpx.ConnectError` | `ConnectionError("Cannot connect to remote AI server: {base_url}")` |
+| HTTP 5xx (재시도 소진) | `RuntimeError("Remote AI server error: {status_code}")` |
+| HTTP 4xx (즉시) | `RuntimeError("Remote AI server error: {status_code}")` |
+| 잘못된 JSON 응답 (generate_json) | `ValueError("Invalid JSON response from remote AI: ...")` |
 
 ---
 
