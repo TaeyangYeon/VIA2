@@ -1,11 +1,11 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 2 (완료)
+## 현재 진행 단계: Step 3 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
 - [x] Step 2: OpenCV + NumPy + PyTorch 설치
-- [ ] Step 3: Ollama 설치 + Qwen2.5-Coder 검증
+- [x] Step 3: Ollama 설치 + Qwen2.5-Coder 검증
 - [ ] Step 4: SOTA Vision 모델 사전 검증
 
 ## Phase 2: 백엔드 기반 + AI Adapter
@@ -67,6 +67,49 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 3 완료 내역
+
+**Ollama 버전**: 0.21.0
+
+**qwen2.5-coder:7b 모델 정보**:
+- 모델명: qwen2.5-coder:7b
+- ID: dae161e27b0e
+- 크기: 4.7 GB
+
+**생성/수정된 파일**:
+- `scripts/start_ollama.sh` (신규 생성 — ollama serve 백그라운드 실행 + health check)
+- `tests/test_ollama.py` (신규 생성 — 4개 테스트)
+- `requirements.txt` (requests>=2.31.0 추가)
+
+**pytest 결과** (전체 20개):
+```
+20 passed in 45.10s
+tests/test_ollama.py::test_ollama_is_running PASSED
+tests/test_ollama.py::test_qwen_coder_model_exists PASSED
+tests/test_ollama.py::test_text_generation PASSED
+tests/test_ollama.py::test_json_output_parsing PASSED
+tests/test_libraries.py::test_opencv_import PASSED
+tests/test_libraries.py::test_numpy_import PASSED
+tests/test_libraries.py::test_torch_import PASSED
+tests/test_libraries.py::test_opencv_image_operations PASSED
+tests/test_libraries.py::test_torch_tensor_operations PASSED
+tests/test_libraries.py::test_opencv_basic_processing PASSED
+tests/test_libraries.py::test_numpy_opencv_interop PASSED
+tests/test_project_structure.py::test_python_version_is_311 PASSED
+tests/test_project_structure.py::test_required_directories_exist PASSED
+tests/test_project_structure.py::test_required_init_files_exist PASSED
+tests/test_project_structure.py::test_backend_placeholder_files_exist PASSED
+tests/test_project_structure.py::test_pyproject_toml_exists_and_contains_via2 PASSED
+tests/test_project_structure.py::test_requirements_txt_exists PASSED
+tests/test_project_structure.py::test_gitignore_exists PASSED
+tests/test_project_structure.py::test_readme_exists PASSED
+tests/test_project_structure.py::test_python_version_file_exists PASSED
+```
+
+**이슈 및 해결 사항**: 특이사항 없음
 
 ---
 
