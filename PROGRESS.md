@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 4 (완료)
+## 현재 진행 단계: Step 5 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -9,7 +9,7 @@
 - [x] Step 4: SOTA Vision 모델 사전 검증
 
 ## Phase 2: 백엔드 기반 + AI Adapter
-- [ ] Step 5: FastAPI 초기화 + Health 엔드포인트
+- [x] Step 5: FastAPI 초기화 + Health 엔드포인트
 - [ ] Step 6: AI Engine Adapter + 로컬 Ollama 어댑터
 - [ ] Step 7: Remote AI Adapter
 - [ ] Step 8: Engine 설정 API
@@ -67,6 +67,64 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 5 완료 내역
+
+**설치된 패키지 버전** (pyenv Python 3.11.15):
+- `fastapi` 0.136.1
+- `uvicorn` 0.46.0 (with standard extras)
+- `starlette` 1.0.0 (fastapi 의존성으로 자동 설치)
+- `pydantic-settings` 2.13.1 (이미 설치됨)
+
+**생성/수정된 파일**:
+- `tests/test_api_health.py` (신규 생성 — 4개 비동기 테스트: 상태코드 200, status ok, version 포함, CORS 헤더)
+- `backend/main.py` (placeholder → FastAPI 앱: CORSMiddleware + GET /health)
+- `backend/config.py` (placeholder → pydantic-settings BaseSettings: app_name, version, debug, host, port)
+- `requirements.txt` (fastapi>=0.111.0, uvicorn[standard]>=0.29.0 추가)
+
+**pytest 결과** (전체 32개):
+```
+32 passed in 38.44s
+tests/test_api_health.py::test_health_endpoint_returns_200 PASSED
+tests/test_api_health.py::test_health_response_status_is_ok PASSED
+tests/test_api_health.py::test_health_response_contains_version PASSED
+tests/test_api_health.py::test_cors_headers_present_on_health PASSED
+tests/test_libraries.py::test_opencv_import PASSED
+tests/test_libraries.py::test_numpy_import PASSED
+tests/test_libraries.py::test_torch_import PASSED
+tests/test_libraries.py::test_opencv_image_operations PASSED
+tests/test_libraries.py::test_torch_tensor_operations PASSED
+tests/test_libraries.py::test_opencv_basic_processing PASSED
+tests/test_libraries.py::test_numpy_opencv_interop PASSED
+tests/test_model_loading.py::test_generate_colab_notebook_script_exists PASSED
+tests/test_model_loading.py::test_verify_vision_models_notebook_exists PASSED
+tests/test_model_loading.py::test_model_setup_doc_exists PASSED
+tests/test_model_loading.py::test_generate_script_valid_python_syntax PASSED
+tests/test_model_loading.py::test_model_setup_doc_contains_all_model_sections PASSED
+tests/test_model_loading.py::test_notebook_is_valid_nbformat PASSED
+tests/test_model_loading.py::test_notebook_has_minimum_15_cells PASSED
+tests/test_model_loading.py::test_notebook_code_cells_contain_all_model_names PASSED
+tests/test_ollama.py::test_ollama_is_running PASSED
+tests/test_ollama.py::test_qwen_coder_model_exists PASSED
+tests/test_ollama.py::test_text_generation PASSED
+tests/test_ollama.py::test_json_output_parsing PASSED
+tests/test_project_structure.py::test_python_version_is_311 PASSED
+tests/test_project_structure.py::test_required_directories_exist PASSED
+tests/test_project_structure.py::test_required_init_files_exist PASSED
+tests/test_project_structure.py::test_backend_placeholder_files_exist PASSED
+tests/test_project_structure.py::test_pyproject_toml_exists_and_contains_via2 PASSED
+tests/test_project_structure.py::test_requirements_txt_exists PASSED
+tests/test_project_structure.py::test_gitignore_exists PASSED
+tests/test_project_structure.py::test_readme_exists PASSED
+tests/test_project_structure.py::test_python_version_file_exists PASSED
+```
+
+**이슈 및 해결 사항**:
+- `pytest-asyncio` 1.3.0이 strict 모드로 동작 → 각 테스트에 `@pytest.mark.asyncio` 명시. anyio는 설치되어 있으나 별도 마커 설정 불필요 (pytest-asyncio가 우선 처리)
+- `pydantic-settings`가 이미 설치되어 있어 추가 설치 불필요 → `BaseSettings` 그대로 사용
+- CORS 테스트에서 OPTIONS preflight 대신 GET + Origin 헤더 방식 사용 → `allow_origins=["*"]` 설정으로 simple request에도 `Access-Control-Allow-Origin` 반환 확인
 
 ---
 
