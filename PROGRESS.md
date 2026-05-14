@@ -1,10 +1,10 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 1 (완료)
+## 현재 진행 단계: Step 2 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
-- [ ] Step 2: OpenCV + NumPy + PyTorch 설치
+- [x] Step 2: OpenCV + NumPy + PyTorch 설치
 - [ ] Step 3: Ollama 설치 + Qwen2.5-Coder 검증
 - [ ] Step 4: SOTA Vision 모델 사전 검증
 
@@ -112,6 +112,45 @@
 **pytest 결과**:
 ```
 9 passed in 0.02s
+tests/test_project_structure.py::test_python_version_is_311 PASSED
+tests/test_project_structure.py::test_required_directories_exist PASSED
+tests/test_project_structure.py::test_required_init_files_exist PASSED
+tests/test_project_structure.py::test_backend_placeholder_files_exist PASSED
+tests/test_project_structure.py::test_pyproject_toml_exists_and_contains_via2 PASSED
+tests/test_project_structure.py::test_requirements_txt_exists PASSED
+tests/test_project_structure.py::test_gitignore_exists PASSED
+tests/test_project_structure.py::test_readme_exists PASSED
+tests/test_project_structure.py::test_python_version_file_exists PASSED
+```
+
+---
+
+## Step 2 완료 내역
+
+**설치된 패키지 버전** (pyenv Python 3.11.15):
+- `opencv-python` 4.8.1.78 (x86_64 호환, GUI 포함 variant — pyenv에 기존 설치됨)
+- `numpy` 1.24.4
+- `torch` 2.2.2 (CPU 전용)
+
+**이슈 및 해결**:
+- pyenv Python 3.11.15에 이미 OpenCV, NumPy, PyTorch가 설치되어 있었음 → 별도 `pip install` 불필요.
+- 쉘의 `python3` 명령이 K-ETF_Trend 프로젝트의 `.venv`를 가리키고 있음 → 이 프로젝트에서는 `/Users/geseuteu/.pyenv/versions/3.11.15/bin/python`을 명시적으로 사용해야 함. 추후 VIA2 전용 `.venv` 생성 권장.
+- `requirements.txt`에는 `opencv-python-headless`로 명시 (백엔드에 GUI 불필요). 현재 환경에서는 `opencv-python`이 설치되어 있으나 headless 기능 동작 확인됨.
+
+**생성/수정된 파일**:
+- `tests/test_libraries.py` (신규 생성)
+- `requirements.txt` (opencv-python-headless, numpy, torch 추가)
+
+**pytest 결과** (전체 16개):
+```
+16 passed in 1.81s
+tests/test_libraries.py::test_opencv_import PASSED
+tests/test_libraries.py::test_numpy_import PASSED
+tests/test_libraries.py::test_torch_import PASSED
+tests/test_libraries.py::test_opencv_image_operations PASSED
+tests/test_libraries.py::test_torch_tensor_operations PASSED
+tests/test_libraries.py::test_opencv_basic_processing PASSED
+tests/test_libraries.py::test_numpy_opencv_interop PASSED
 tests/test_project_structure.py::test_python_version_is_311 PASSED
 tests/test_project_structure.py::test_required_directories_exist PASSED
 tests/test_project_structure.py::test_required_init_files_exist PASSED
