@@ -1,12 +1,12 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 3 (완료)
+## 현재 진행 단계: Step 4 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
 - [x] Step 2: OpenCV + NumPy + PyTorch 설치
 - [x] Step 3: Ollama 설치 + Qwen2.5-Coder 검증
-- [ ] Step 4: SOTA Vision 모델 사전 검증
+- [x] Step 4: SOTA Vision 모델 사전 검증
 
 ## Phase 2: 백엔드 기반 + AI Adapter
 - [ ] Step 5: FastAPI 초기화 + Health 엔드포인트
@@ -67,6 +67,103 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 4 완료 내역
+
+**목적**: Florence-2, Grounding DINO, SAM 2, DINOv2, Depth-Anything-V2 각 모델의 Colab 검증용 .ipynb 노트북과 모델 설정 가이드 문서 작성.
+모든 SOTA 비전 모델은 Intel Mac에서 실행 불가 → Colab T4 16GB에서 실행 예정.
+
+**생성/수정된 파일**:
+- `scripts/generate_colab_notebook.py` (신규 생성 — nbformat을 사용해 verify_vision_models.ipynb를 프로그래밍 방식으로 생성하는 스크립트)
+- `scripts/verify_vision_models.ipynb` (신규 생성 — Colab 업로드용 15셀 Jupyter 노트북: pip install, 공통 유틸, 5개 모델 섹션, 요약 테이블)
+- `docs/MODEL_SETUP.md` (신규 생성 — 모델 설정 가이드: HuggingFace 경로, VIA2 역할, Colab 실행법, GPU 메모리 추정치, Remote Adapter 연동 방식)
+- `tests/test_model_loading.py` (신규 생성 — 8개 로컬 pytest: 파일 존재, 문법 검사, nbformat 유효성, 셀 수 ≥15, 5개 모델명 포함)
+- `requirements.txt` (nbformat>=5.0 추가)
+
+**pytest 결과** (전체 28개):
+```
+28 passed in 36.00s
+tests/test_model_loading.py::test_generate_colab_notebook_script_exists PASSED
+tests/test_model_loading.py::test_verify_vision_models_notebook_exists PASSED
+tests/test_model_loading.py::test_model_setup_doc_exists PASSED
+tests/test_model_loading.py::test_generate_script_valid_python_syntax PASSED
+tests/test_model_loading.py::test_model_setup_doc_contains_all_model_sections PASSED
+tests/test_model_loading.py::test_notebook_is_valid_nbformat PASSED
+tests/test_model_loading.py::test_notebook_has_minimum_15_cells PASSED
+tests/test_model_loading.py::test_notebook_code_cells_contain_all_model_names PASSED
+tests/test_ollama.py::test_ollama_is_running PASSED
+tests/test_ollama.py::test_qwen_coder_model_exists PASSED
+tests/test_ollama.py::test_text_generation PASSED
+tests/test_ollama.py::test_json_output_parsing PASSED
+tests/test_libraries.py::test_opencv_import PASSED
+tests/test_libraries.py::test_numpy_import PASSED
+tests/test_libraries.py::test_torch_import PASSED
+tests/test_libraries.py::test_opencv_image_operations PASSED
+tests/test_libraries.py::test_torch_tensor_operations PASSED
+tests/test_libraries.py::test_opencv_basic_processing PASSED
+tests/test_libraries.py::test_numpy_opencv_interop PASSED
+tests/test_project_structure.py::test_python_version_is_311 PASSED
+tests/test_project_structure.py::test_required_directories_exist PASSED
+tests/test_project_structure.py::test_required_init_files_exist PASSED
+tests/test_project_structure.py::test_backend_placeholder_files_exist PASSED
+tests/test_project_structure.py::test_pyproject_toml_exists_and_contains_via2 PASSED
+tests/test_project_structure.py::test_requirements_txt_exists PASSED
+tests/test_project_structure.py::test_gitignore_exists PASSED
+tests/test_project_structure.py::test_readme_exists PASSED
+tests/test_project_structure.py::test_python_version_file_exists PASSED
+```
+
+**Colab 검증**: Taeyang이 Colab에서 직접 실행 예정 — 실측 메모리 수치는 실행 후 업데이트
+- 실행 방법: `scripts/verify_vision_models.ipynb`를 Google Colab에 업로드 → T4 GPU 런타임 선택 → 전체 셀 실행
+
+**이슈 및 해결 사항**:
+- Colab pip install 셀에서 `cu118` CUDA 버전 명시 → Colab은 CUDA 12.x 사용 → `--index-url` 제거로 해결
+- SAM 2 패키지명 `sam2` (PyPI 미등록) → `git+https://github.com/facebookresearch/sam2.git` 으로 수정
+- 이미지 URL 다운로드 실패 시 전체 노트북 중단 → try/except + PIL fallback 이미지 추가
+
+**[핫픽스 1] Florence-2 로딩 실패 수정 (1차)** (Colab 실행 후 발견):
+- **에러**: `'Florence2ForConditionalGeneration' object has no attribute '_supports_sdpa'`
+- **원인 1**: `trust_remote_code=True` 누락 — Florence-2는 커스텀 모델 코드를 사용하므로 명시적으로 허용해야 함
+- **원인 2**: 최신 transformers의 SDPA(Scaled Dot-Product Attention) 체크가 Florence-2 커스텀 코드와 충돌
+- **해결**: `generate_colab_notebook.py` cell5 수정 후 `.ipynb` 재생성
+  - `AutoModelForCausalLM.from_pretrained()`에 `trust_remote_code=True`, `attn_implementation="eager"` 추가
+  - `AutoProcessor.from_pretrained()`에 `trust_remote_code=True` 추가
+
+**[핫픽스 2] Florence-2 로딩 실패 수정 (2차 — transformers 버전 고정)**: ← 이후 롤백됨
+- `transformers==4.46.3` 고정 → SAM 2 미지원, Grounding DINO API 변경으로 다른 모델들 실패 유발
+- 결국 버전 고정 방식 폐기, 핫픽스 3으로 대체
+
+**[핫픽스 3] 전체 모델 호환성 수정 (2차 시도 — workaround)**: ← 이후 핫픽스 4로 대체
+- `flash_attn`, `Florence-2-base-ft` fallback, `sam-vit-base` fallback 추가 등 복잡한 workaround 시도
+- Florence-2 근본 원인(커스텀 코드 비호환)을 해결하지 못함 → 핫픽스 4로 대체
+
+**[핫픽스 4] 전체 모델 호환성 수정 (3차 시도 — 가정 기반)**: ← 핫픽스 5로 대체
+- `florence-community/Florence-2-base` + `Florence2ForConditionalGeneration` 적용 → 로컬 검증 없이 가정 기반 작성
+
+**[핫픽스 5] 전체 모델 호환성 수정 (최종 — 로컬 CPU 실제 테스트 기반)**:
+- **전략 변경**: 가정으로 코드 작성하지 않고, 로컬 CPU에서 실제 실행해 동작 확인 후 노트북 반영
+- **로컬 테스트 환경**: transformers 4.53.0, PyTorch 2.2.2 (CPU, Intel Mac) — PyTorch 2.4+ 미지원으로 transformers 5.x 사용 불가
+- **발견 사항**:
+  - **Florence-2**: `Florence2ForConditionalGeneration` 클래스는 transformers 4.53에 미존재 (5.x에서 추가됨). `florence-community/Florence-2-base`는 model_type=`florence2`로 4.53 미지원. `microsoft/Florence-2-base` + `trust_remote_code=True` + `torch_dtype=torch.float32` → CPU에서 정상 동작 확인 ✅
+  - **Grounding DINO**: `inspect.signature()` 확인 결과 파라미터명은 `threshold` (구 파라미터 `box_threshold`는 4.51.0에서 deprecated — `@deprecate_kwarg("box_threshold", new_name="threshold", version="4.51.0")` 확인). `threshold=0.3, text_threshold=0.3`이 올바른 호출 ✅
+  - **SAM 2**: `facebook/sam2-hiera-small`은 model_type=`sam2_video`로 transformers 4.53 미지원 (`KeyError: 'sam2_video'`). 최신 transformers(5.x) 필요 → Colab에서만 테스트 가능
+- **최종 노트북 코드**:
+  - **cell5 (Florence-2)**: transformers 5.x 환경에서는 `florence-community/Florence-2-base` + `Florence2ForConditionalGeneration` 시도, 실패 시 `microsoft/Florence-2-base` + `trust_remote_code=True` + `attn_implementation="eager"` fallback (CPU에서 동작 확인된 코드)
+  - **cell7 (Grounding DINO)**: `threshold=0.3, text_threshold=0.3` (실제 signature 확인 기반)
+  - **cell9 (SAM 2)**: `pipeline("mask-generation", "facebook/sam2-hiera-small")` (최신 transformers 필요)
+- **로컬 pytest**: 28/28 통과
+- **수정 파일**: `scripts/generate_colab_notebook.py`, `scripts/verify_vision_models.ipynb` (재생성)
+
+**[핫픽스 6] Florence-2 추론 dtype 불일치 수정**:
+- **에러**: `RuntimeError: Input type (float) and bias type (c10::Half) should be the same`
+- **원인**: 모델은 `dtype=torch.float16`으로 로드됐으나 processor 출력 텐서는 float32
+- **해결**: inference 입력을 `model.device`와 `torch.float16`으로 동시 캐스팅
+  - 변경 전: `.to("cuda" if torch.cuda.is_available() else "cpu")`
+  - 변경 후: `.to(model.device, torch.float16)`
+- HuggingFace 공식 예제 패턴 (`inputs.to(model.device, torch.bfloat16)`) 참조
+- **수정 파일**: `scripts/generate_colab_notebook.py`, `scripts/verify_vision_models.ipynb` (재생성)
 
 ---
 
