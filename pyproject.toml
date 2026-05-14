@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "via2"
+version = "0.1.0"
+description = "Vision Intelligence Agent v3.0 — multi-agent AI desktop application for automated computer vision algorithm design"
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

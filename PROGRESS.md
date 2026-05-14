@@ -1,9 +1,9 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 0 (미시작)
+## 현재 진행 단계: Step 1 (완료)
 
 ## Phase 1: 환경 설정
-- [ ] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
+- [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
 - [ ] Step 2: OpenCV + NumPy + PyTorch 설치
 - [ ] Step 3: Ollama 설치 + Qwen2.5-Coder 검증
 - [ ] Step 4: SOTA Vision 모델 사전 검증
@@ -67,3 +67,58 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 1 완료 내역
+
+**Python 버전**: Python 3.11.15 (pyenv 3.11.15)
+
+**생성된 디렉토리**:
+- `backend/`
+- `backend/routers/`
+- `backend/services/`
+- `backend/models/`
+- `agents/`
+- `agents/prompts/`
+- `light_test/`
+- `frontend/` (빈 디렉토리)
+- `tests/`
+- `scripts/` (빈 디렉토리)
+- `docs/` (빈 디렉토리)
+
+**생성된 파일**:
+- `backend/__init__.py`
+- `backend/main.py` (placeholder)
+- `backend/config.py` (placeholder)
+- `backend/routers/__init__.py`
+- `backend/services/__init__.py`
+- `backend/models/__init__.py`
+- `agents/__init__.py`
+- `agents/prompts/__init__.py`
+- `light_test/__init__.py`
+- `tests/__init__.py`
+- `tests/test_project_structure.py`
+- `pyproject.toml`
+- `requirements.txt`
+- `.python-version` (3.11.15, set via `pyenv local`)
+- `.gitignore`
+- `README.md`
+
+**이슈 및 해결**:
+- pytest가 다른 프로젝트의 venv에 설치되어 있었으나, Python 3.11.15가 시스템에서 직접 pytest를 사용 가능 (pytest-9.0.3). 별도 설치 불필요.
+- `.gitignore`에서 `.python-version` 제외 → 프로젝트 설정 파일로 추적 대상에 포함.
+
+**pytest 결과**:
+```
+9 passed in 0.02s
+tests/test_project_structure.py::test_python_version_is_311 PASSED
+tests/test_project_structure.py::test_required_directories_exist PASSED
+tests/test_project_structure.py::test_required_init_files_exist PASSED
+tests/test_project_structure.py::test_backend_placeholder_files_exist PASSED
+tests/test_project_structure.py::test_pyproject_toml_exists_and_contains_via2 PASSED
+tests/test_project_structure.py::test_requirements_txt_exists PASSED
+tests/test_project_structure.py::test_gitignore_exists PASSED
+tests/test_project_structure.py::test_readme_exists PASSED
+tests/test_project_structure.py::test_python_version_file_exists PASSED
+```
