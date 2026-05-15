@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 7 (완료)
+## 현재 진행 단계: Step 8 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -12,7 +12,7 @@
 - [x] Step 5: FastAPI 초기화 + Health 엔드포인트
 - [x] Step 6: AI Engine Adapter + 로컬 Ollama 어댑터
 - [x] Step 7: Remote AI Adapter
-- [ ] Step 8: Engine 설정 API
+- [x] Step 8: Engine 설정 API
 - [ ] Step 9: 이미지 업로드 + 저장소 API
 - [ ] Step 10: ROI 설정 API + Config + Directive API
 - [ ] Step 11: 로깅 시스템
@@ -67,6 +67,59 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 8 완료 내역
+
+**생성/수정된 파일**:
+- `backend/models/engine.py` (신규 생성 — EngineMode enum + EngineSettings Pydantic 모델)
+- `backend/services/engine_store.py` (신규 생성 — thread-safe 인메모리 설정 저장소)
+- `backend/routers/engine.py` (신규 생성 — GET/POST /api/engine 라우터)
+- `backend/services/ai_adapter/factory.py` (신규 생성 — create_adapter + get_current_adapter)
+- `backend/main.py` (수정 — engine_router를 /api prefix로 등록)
+- `backend/services/ai_adapter/__init__.py` (수정 — create_adapter, get_current_adapter export 추가)
+- `tests/test_engine_api.py` (신규 생성 — 10개 테스트, 전부 통과)
+
+**pytest 결과** (전체 86개: 81 passed, 5 skipped):
+```
+81 passed, 5 skipped in 3.46s
+tests/test_engine_api.py::test_get_engine_returns_default_settings PASSED
+tests/test_engine_api.py::test_post_engine_local_mode_succeeds PASSED
+tests/test_engine_api.py::test_post_engine_remote_mode_with_url_succeeds PASSED
+tests/test_engine_api.py::test_post_engine_remote_mode_missing_url_returns_422 PASSED
+tests/test_engine_api.py::test_post_engine_updates_persist_to_get PASSED
+tests/test_engine_api.py::test_post_engine_invalid_mode_returns_422 PASSED
+tests/test_engine_api.py::test_factory_creates_ollama_adapter_for_local_mode PASSED
+tests/test_engine_api.py::test_factory_creates_remote_adapter_for_remote_mode PASSED
+tests/test_engine_api.py::test_get_current_adapter_returns_adapter_matching_current_settings PASSED
+tests/test_engine_api.py::test_engine_settings_model_default_values PASSED
+(기존 71 passed, 5 skipped — 회귀 없음)
+```
+
+**EngineSettings 모델 필드 상세**:
+| 필드 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `mode` | `EngineMode` | `"local"` | 엔진 실행 모드 |
+| `local_ollama_url` | `str` | `"http://127.0.0.1:11434"` | 로컬 Ollama 서버 주소 |
+| `remote_url` | `str \| None` | `None` | 원격 AI 서버 URL |
+| `remote_type` | `str` | `"colab"` | 원격 서버 종류 (colab/azure/custom) |
+| `remote_auth_token` | `str \| None` | `None` | 원격 서버 Bearer 토큰 |
+| `model_name` | `str` | `"qwen2.5-coder:7b"` | 사용할 모델명 |
+
+**Pydantic 유효성 검사**: `mode == "remote"` 이고 `remote_url`이 None/비어있으면 422 반환 (`@model_validator(mode="after")`)
+
+**Factory 동작 상세**:
+| `mode` | 반환 어댑터 | 생성자 인수 |
+|--------|------------|------------|
+| `"local"` | `OllamaAdapter` | `base_url=settings.local_ollama_url` |
+| `"remote"` | `RemoteAdapter` | `base_url=settings.remote_url, auth_token=settings.remote_auth_token` |
+
+- `create_adapter(settings)`: EngineSettings를 받아 적절한 어댑터 인스턴스 반환
+- `get_current_adapter()`: engine_store에서 현재 설정을 읽어 어댑터 생성 후 반환
+- 주의: `OllamaAdapter`는 `model` 파라미터 없음 (model은 각 메서드 호출 시 전달) — 실제 생성자 시그니처 확인 후 반영
+
+**이슈 및 해결 사항**: 없음 (TDD Red→Green 한 사이클로 완료)
 
 ---
 
