@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 8 (완료)
+## 현재 진행 단계: Step 9 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -13,7 +13,7 @@
 - [x] Step 6: AI Engine Adapter + 로컬 Ollama 어댑터
 - [x] Step 7: Remote AI Adapter
 - [x] Step 8: Engine 설정 API
-- [ ] Step 9: 이미지 업로드 + 저장소 API
+- [x] Step 9: 이미지 업로드 + 저장소 API
 - [ ] Step 10: ROI 설정 API + Config + Directive API
 - [ ] Step 11: 로깅 시스템
 
@@ -67,6 +67,124 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 9 완료 내역
+
+**생성/수정된 파일**:
+- `backend/models/image.py` (신규 생성 — ImageMetadata Pydantic 모델)
+- `backend/services/image_validator.py` (신규 생성 — validate_filename, validate_content_type)
+- `backend/services/image_store.py` (신규 생성 — thread-safe 인메모리 이미지 저장소)
+- `backend/routers/images.py` (신규 생성 — 이미지 업로드/조회/삭제 라우터)
+- `backend/main.py` (수정 — images_router를 /api prefix로 등록)
+- `tests/test_image_api.py` (신규 생성 — 60개 테스트, 전부 통과)
+
+**pytest 결과** (전체 146개: 141 passed, 5 skipped):
+```
+141 passed, 5 skipped in 4.16s
+tests/test_image_api.py::test_validate_ok_1_png_returns_valid_with_label_ok_index_1 PASSED
+tests/test_image_api.py::test_validate_ok_2_jpg_returns_valid PASSED
+tests/test_image_api.py::test_validate_ng_1_jpeg_returns_valid_with_label_ng PASSED
+tests/test_image_api.py::test_validate_lowercase_prefix_normalized_to_uppercase PASSED
+tests/test_image_api.py::test_validate_lowercase_ng_with_large_index PASSED
+tests/test_image_api.py::test_validate_uppercase_extension_is_valid PASSED
+tests/test_image_api.py::test_validate_bmp_extension_is_valid PASSED
+tests/test_image_api.py::test_validate_tiff_extension_with_index PASSED
+tests/test_image_api.py::test_validate_multi_digit_index_is_valid PASSED
+tests/test_image_api.py::test_validate_arbitrary_name_is_invalid PASSED
+tests/test_image_api.py::test_validate_ok_without_underscore_number_is_invalid PASSED
+tests/test_image_api.py::test_validate_zero_index_is_invalid PASSED
+tests/test_image_api.py::test_validate_negative_index_is_invalid PASSED
+tests/test_image_api.py::test_validate_empty_number_after_underscore_is_invalid PASSED
+tests/test_image_api.py::test_validate_gif_extension_is_invalid PASSED
+tests/test_image_api.py::test_validate_filename_without_extension_is_invalid PASSED
+tests/test_image_api.py::test_validate_double_extension_is_invalid PASSED
+tests/test_image_api.py::test_content_type_image_png_is_valid PASSED
+tests/test_image_api.py::test_content_type_image_jpeg_is_valid PASSED
+tests/test_image_api.py::test_content_type_image_bmp_is_valid PASSED
+tests/test_image_api.py::test_content_type_image_tiff_is_valid PASSED
+tests/test_image_api.py::test_content_type_application_pdf_is_invalid PASSED
+tests/test_image_api.py::test_content_type_text_plain_is_invalid PASSED
+tests/test_image_api.py::test_content_type_none_is_invalid PASSED
+tests/test_image_api.py::test_image_store_add_returns_metadata_with_all_fields PASSED
+tests/test_image_api.py::test_image_store_file_is_written_to_disk PASSED
+tests/test_image_api.py::test_image_store_get_by_id_returns_correct_metadata PASSED
+tests/test_image_api.py::test_image_store_get_by_id_returns_none_for_unknown PASSED
+tests/test_image_api.py::test_image_store_get_all_returns_all_uploaded_images PASSED
+tests/test_image_api.py::test_image_store_delete_removes_metadata PASSED
+tests/test_image_api.py::test_image_store_delete_removes_file_from_disk PASSED
+tests/test_image_api.py::test_image_store_delete_returns_false_for_unknown_id PASSED
+tests/test_image_api.py::test_image_store_clear_all_empties_store PASSED
+tests/test_image_api.py::test_ok1_is_classified_as_analysis_group PASSED
+tests/test_image_api.py::test_ng1_is_classified_as_analysis_group PASSED
+tests/test_image_api.py::test_ok2_is_classified_as_test_group PASSED
+tests/test_image_api.py::test_ng2_is_classified_as_test_group PASSED
+tests/test_image_api.py::test_ok10_is_classified_as_test_group PASSED
+tests/test_image_api.py::test_get_by_group_analysis_contains_exactly_ok1_and_ng1 PASSED
+tests/test_image_api.py::test_get_by_group_test_excludes_ok1_and_ng1 PASSED
+tests/test_image_api.py::test_ok1_overwrite_keeps_only_one_ok1 PASSED
+tests/test_image_api.py::test_ok1_overwrite_deletes_old_file_from_disk PASSED
+tests/test_image_api.py::test_upload_valid_image_returns_201 PASSED
+tests/test_image_api.py::test_upload_returns_metadata_with_correct_fields PASSED
+tests/test_image_api.py::test_upload_invalid_filename_returns_422 PASSED
+tests/test_image_api.py::test_upload_invalid_content_type_returns_422 PASSED
+tests/test_image_api.py::test_list_all_images_returns_200_with_list PASSED
+tests/test_image_api.py::test_list_all_images_returns_uploaded_images PASSED
+tests/test_image_api.py::test_list_images_by_analysis_group_returns_only_ok1_ng1 PASSED
+tests/test_image_api.py::test_list_images_by_test_group_excludes_index1 PASSED
+tests/test_image_api.py::test_get_image_by_id_returns_200_with_metadata PASSED
+tests/test_image_api.py::test_get_image_by_unknown_id_returns_404 PASSED
+tests/test_image_api.py::test_delete_image_by_id_returns_200 PASSED
+tests/test_image_api.py::test_delete_image_by_id_removes_from_list PASSED
+tests/test_image_api.py::test_delete_image_by_unknown_id_returns_404 PASSED
+tests/test_image_api.py::test_clear_all_images_returns_200 PASSED
+tests/test_image_api.py::test_clear_all_images_empties_the_list PASSED
+tests/test_image_api.py::test_upload_ok1_twice_overwrites_first_upload PASSED
+tests/test_image_api.py::test_upload_ng1_is_in_analysis_group PASSED
+tests/test_image_api.py::test_upload_ok2_is_in_test_group PASSED
+(기존 81 passed, 5 skipped — 회귀 없음)
+```
+
+**ImageValidator 검증 규칙 상세**:
+
+파일명 패턴: `^(ok|ng)_([1-9]\d*)\.(png|jpg|jpeg|bmp|tiff)$` (case-insensitive)
+
+| 항목 | 규칙 |
+|------|------|
+| 접두사 | `OK` 또는 `NG` (대소문자 무관, 결과는 대문자 정규화) |
+| 구분자 | `_` (언더스코어) |
+| 인덱스 | 양의 정수 (1 이상, 0·음수·빈값 불가) |
+| 확장자 | `png`, `jpg`, `jpeg`, `bmp`, `tiff` (대소문자 무관) |
+| 이중 확장자 | `OK_1.png.exe` 같은 형식 거부 (`$` 앵커로 처리) |
+
+유효한 MIME 타입: `image/png`, `image/jpeg`, `image/bmp`, `image/tiff`, `image/x-bmp`
+
+**ImageStore 분류 로직 상세 (analysis vs test)**:
+
+| 조건 | 그룹 |
+|------|------|
+| `index == 1` (OK_1 또는 NG_1) | `analysis` — 알고리즘 설계용 기준 이미지 |
+| `index >= 2` (OK_2, NG_2, ...) | `test` — 알고리즘 테스트용 이미지 |
+
+덮어쓰기 규칙: 동일한 `(label, index)` 쌍 재업로드 시 기존 파일과 메타데이터를 삭제하고 새 항목으로 교체.
+
+**API 엔드포인트 목록과 응답 형식**:
+
+| 메서드 | 경로 | 상태 코드 | 설명 |
+|--------|------|-----------|------|
+| `POST` | `/api/images/upload` | 201 | multipart 파일 업로드, ImageMetadata 반환 |
+| `GET` | `/api/images` | 200 | 전체 이미지 목록 (옵션: `?group=analysis\|test`) |
+| `GET` | `/api/images/{image_id}` | 200 / 404 | 단일 이미지 메타데이터 조회 |
+| `DELETE` | `/api/images/{image_id}` | 200 / 404 | 이미지 삭제 (파일 + 메타데이터) |
+| `DELETE` | `/api/images` | 200 | 전체 이미지 초기화 |
+
+ImageMetadata 응답 필드: `id`, `original_filename`, `label`, `index`, `file_size`, `upload_timestamp`, `file_path`, `group`
+
+**이슈 및 해결 사항**:
+- `DELETE /api/images`와 `DELETE /api/images/{image_id}` 라우트 순서: FastAPI는 비파라미터 경로를 우선 매칭하므로 `/images`를 `/{image_id}` 앞에 선언하여 정확한 라우팅 보장.
+- 테스트 격리: `autouse=True` 픽스처에서 `tmp_path`를 주입받아 `configure_upload_dir(tmp_path/uploads)` 호출 후 `clear_all()` 실행 → 각 테스트가 독립적인 파일 시스템 환경에서 실행됨.
+- `validate_content_type(None)` 처리: `None in _VALID_MIME_TYPES`는 `False`를 반환하므로 별도 None 체크 불필요.
 
 ---
 
