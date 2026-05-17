@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 9 (완료)
+## 현재 진행 단계: Step 10 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -14,7 +14,7 @@
 - [x] Step 7: Remote AI Adapter
 - [x] Step 8: Engine 설정 API
 - [x] Step 9: 이미지 업로드 + 저장소 API
-- [ ] Step 10: ROI 설정 API + Config + Directive API
+- [x] Step 10: ROI 설정 API + Config + Directive API
 - [ ] Step 11: 로깅 시스템
 
 ## Phase 3: 시각 분석 에이전트
@@ -67,6 +67,153 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 10 완료 내역
+
+**생성/수정된 파일**:
+- `backend/models/roi.py` (신규 생성 — ROICoordinates Pydantic 모델, 좌표 유효성 검사)
+- `backend/models/config.py` (신규 생성 — SuccessCriteria + InspectionConfig Pydantic 모델)
+- `backend/models/directives.py` (신규 생성 — AgentDirectives Pydantic 모델)
+- `backend/services/roi_store.py` (신규 생성 — thread-safe 인메모리 ROI 저장소)
+- `backend/services/config_store.py` (신규 생성 — thread-safe 인메모리 Config 저장소)
+- `backend/services/directives_store.py` (신규 생성 — thread-safe 인메모리 Directives 저장소)
+- `backend/routers/roi.py` (신규 생성 — GET/POST/DELETE /api/roi 라우터)
+- `backend/routers/config.py` (신규 생성 — GET/POST /api/config 라우터, 경고 로직 포함)
+- `backend/routers/directives.py` (신규 생성 — GET/POST /api/directives 라우터)
+- `backend/main.py` (수정 — roi_router, config_router, directives_router를 /api prefix로 등록)
+- `tests/test_settings_api.py` (신규 생성 — 64개 테스트, 전부 통과)
+
+**pytest 결과** (전체 210개: 205 passed, 5 skipped):
+```
+205 passed, 5 skipped in 3.92s
+tests/test_settings_api.py::test_roi_model_valid_coordinates_accepted PASSED
+tests/test_settings_api.py::test_roi_model_x1_equal_x2_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_x1_greater_than_x2_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_y1_equal_y2_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_y1_greater_than_y2_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_negative_x1_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_negative_y1_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_negative_x2_raises_validation_error PASSED
+tests/test_settings_api.py::test_roi_model_all_zero_except_positive_x2_y2_is_valid PASSED
+tests/test_settings_api.py::test_roi_store_initially_returns_none PASSED
+tests/test_settings_api.py::test_roi_store_set_and_get_returns_roi PASSED
+tests/test_settings_api.py::test_roi_store_clear_resets_to_none PASSED
+tests/test_settings_api.py::test_get_roi_when_not_set_returns_null PASSED
+tests/test_settings_api.py::test_post_roi_valid_coordinates_returns_200 PASSED
+tests/test_settings_api.py::test_post_roi_persists_and_get_returns_it PASSED
+tests/test_settings_api.py::test_post_roi_x1_equal_x2_returns_422 PASSED
+tests/test_settings_api.py::test_post_roi_x1_greater_than_x2_returns_422 PASSED
+tests/test_settings_api.py::test_post_roi_y1_greater_than_y2_returns_422 PASSED
+tests/test_settings_api.py::test_post_roi_negative_x1_returns_422 PASSED
+tests/test_settings_api.py::test_delete_roi_clears_and_get_returns_null PASSED
+tests/test_settings_api.py::test_delete_roi_returns_200 PASSED
+tests/test_settings_api.py::test_config_model_default_mode_is_inspection PASSED
+tests/test_settings_api.py::test_config_model_default_max_iteration_is_3 PASSED
+tests/test_settings_api.py::test_config_model_default_success_criteria_fields_are_none PASSED
+tests/test_settings_api.py::test_config_model_mode_align_is_valid PASSED
+tests/test_settings_api.py::test_config_model_invalid_mode_raises_validation_error PASSED
+tests/test_settings_api.py::test_config_model_max_iteration_1_is_valid PASSED
+tests/test_settings_api.py::test_config_model_max_iteration_10_is_valid PASSED
+tests/test_settings_api.py::test_config_model_max_iteration_0_raises_validation_error PASSED
+tests/test_settings_api.py::test_config_model_max_iteration_11_raises_validation_error PASSED
+tests/test_settings_api.py::test_config_model_accuracy_1_0_is_valid PASSED
+tests/test_settings_api.py::test_config_model_accuracy_above_1_raises_validation_error PASSED
+tests/test_settings_api.py::test_config_model_accuracy_below_0_raises_validation_error PASSED
+tests/test_settings_api.py::test_config_model_fp_rate_0_0_is_valid PASSED
+tests/test_settings_api.py::test_config_model_coord_error_0_is_valid PASSED
+tests/test_settings_api.py::test_config_model_coord_error_negative_raises_validation_error PASSED
+tests/test_settings_api.py::test_config_store_returns_default_config PASSED
+tests/test_settings_api.py::test_config_store_update_and_get_returns_updated PASSED
+tests/test_settings_api.py::test_config_store_reset_returns_defaults PASSED
+tests/test_settings_api.py::test_get_config_returns_200_with_defaults PASSED
+tests/test_settings_api.py::test_post_config_valid_payload_returns_200 PASSED
+tests/test_settings_api.py::test_post_config_persists_to_get PASSED
+tests/test_settings_api.py::test_post_config_invalid_mode_returns_422 PASSED
+tests/test_settings_api.py::test_post_config_max_iteration_0_returns_422 PASSED
+tests/test_settings_api.py::test_post_config_max_iteration_11_returns_422 PASSED
+tests/test_settings_api.py::test_post_config_accuracy_above_099_triggers_warning PASSED
+tests/test_settings_api.py::test_post_config_accuracy_exactly_099_no_warning PASSED
+tests/test_settings_api.py::test_post_config_fp_rate_below_0005_triggers_warning PASSED
+tests/test_settings_api.py::test_post_config_fp_rate_exactly_0005_no_warning PASSED
+tests/test_settings_api.py::test_post_config_fn_rate_below_0005_triggers_warning PASSED
+tests/test_settings_api.py::test_post_config_coord_error_below_05_triggers_warning PASSED
+tests/test_settings_api.py::test_post_config_coord_error_exactly_05_no_warning PASSED
+tests/test_settings_api.py::test_post_config_all_extreme_goals_triggers_all_warnings PASSED
+tests/test_settings_api.py::test_post_config_no_extreme_goals_no_warnings_field PASSED
+tests/test_settings_api.py::test_get_config_has_no_warnings_field PASSED
+tests/test_settings_api.py::test_directives_model_default_all_fields_empty_string PASSED
+tests/test_settings_api.py::test_directives_model_accepts_custom_values PASSED
+tests/test_settings_api.py::test_directives_store_returns_default_empty_strings PASSED
+tests/test_settings_api.py::test_directives_store_update_and_get_returns_updated PASSED
+tests/test_settings_api.py::test_directives_store_reset_returns_defaults PASSED
+tests/test_settings_api.py::test_get_directives_returns_200_with_empty_defaults PASSED
+tests/test_settings_api.py::test_post_directives_saves_and_get_returns_updated PASSED
+tests/test_settings_api.py::test_post_directives_partial_update_preserves_other_defaults PASSED
+tests/test_settings_api.py::test_post_directives_all_fields_saved PASSED
+(기존 141 passed, 5 skipped — 회귀 없음)
+```
+
+**ROICoordinates 모델 필드 상세**:
+| 필드 | 타입 | 검증 규칙 |
+|------|------|----------|
+| `x1` | `int` | `>= 0`, `x1 < x2` |
+| `y1` | `int` | `>= 0`, `y1 < y2` |
+| `x2` | `int` | `>= 0` |
+| `y2` | `int` | `>= 0` |
+
+**InspectionConfig 모델 필드 상세**:
+| 필드 | 타입 | 기본값 | 검증 규칙 |
+|------|------|--------|----------|
+| `mode` | `Literal["inspection","align"]` | `"inspection"` | 두 값 중 하나 |
+| `max_iteration` | `int` | `3` | 1 ≤ x ≤ 10 |
+| `success_criteria` | `SuccessCriteria` | 모든 필드 None | 서브 모델 |
+| `success_criteria.accuracy` | `Optional[float]` | `None` | 0.0 ≤ x ≤ 1.0 |
+| `success_criteria.fp_rate` | `Optional[float]` | `None` | 0.0 ≤ x ≤ 1.0 |
+| `success_criteria.fn_rate` | `Optional[float]` | `None` | 0.0 ≤ x ≤ 1.0 |
+| `success_criteria.coord_error` | `Optional[float]` | `None` | x ≥ 0.0 |
+
+**Config 경고 로직 (POST /api/config 전용)**:
+| 조건 | 경고 메시지 |
+|------|------------|
+| `accuracy > 0.99` | "Accuracy above 99% is extremely difficult to achieve with rule-based methods" |
+| `fp_rate < 0.005` | "FP rate below 0.5% may require deep learning approaches" |
+| `fn_rate < 0.005` | "FN rate below 0.5% may require deep learning approaches" |
+| `coord_error < 0.5` | "Coordinate error below 0.5px may require sub-pixel algorithms or hardware upgrade" |
+
+- GET /api/config는 `warnings` 필드 없이 `InspectionConfig`만 반환
+- POST /api/config는 항상 `warnings` 필드 포함 (해당 없으면 빈 리스트)
+
+**AgentDirectives 모델 필드 상세**:
+| 필드 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `orchestrator` | `str` | `""` | 오케스트레이터 에이전트 지시 |
+| `spec` | `str` | `""` | Spec 에이전트 지시 |
+| `image_analysis` | `str` | `""` | 이미지 분석 에이전트 지시 |
+| `depth` | `str` | `""` | Depth 에이전트 지시 |
+| `material` | `str` | `""` | Material 에이전트 지시 |
+| `pipeline_composer` | `str` | `""` | Pipeline Composer 에이전트 지시 |
+| `vision_judge` | `str` | `""` | Vision Judge 에이전트 지시 |
+| `inspection_plan` | `str` | `""` | Inspection Plan 에이전트 지시 |
+| `test` | `str` | `""` | Test 에이전트 지시 |
+
+**API 엔드포인트 목록**:
+
+| 메서드 | 경로 | 상태 코드 | 설명 |
+|--------|------|-----------|------|
+| `POST` | `/api/roi` | 200 / 422 | ROI 좌표 저장, ROICoordinates 반환 |
+| `GET` | `/api/roi` | 200 | 현재 ROI 조회 (미설정 시 null) |
+| `DELETE` | `/api/roi` | 200 | ROI 초기화 |
+| `POST` | `/api/config` | 200 / 422 | 검사 설정 저장, 경고 포함 응답 |
+| `GET` | `/api/config` | 200 | 현재 설정 조회 (경고 없음) |
+| `POST` | `/api/directives` | 200 | 에이전트 지시 저장 |
+| `GET` | `/api/directives` | 200 | 현재 지시 조회 |
+
+**이슈 및 해결 사항**:
+- `GET /api/roi` 미설정 시 `null` 반환: FastAPI의 `Optional[ROICoordinates]` 반환 타입 선언만으로 자동 처리됨.
+- Config 경고는 `GET`에서는 불필요하므로 `POST` 라우터에서만 `_build_warnings()` 로직 적용. `GET`은 순수 `InspectionConfig` 모델 반환.
+- 테스트 격리: `autouse=True` 픽스처에서 3개 스토어 모두 reset → 각 테스트 독립 실행 보장.
 
 ---
 
