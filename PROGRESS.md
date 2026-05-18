@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 10 (완료)
+## 현재 진행 단계: Step 11 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -15,7 +15,7 @@
 - [x] Step 8: Engine 설정 API
 - [x] Step 9: 이미지 업로드 + 저장소 API
 - [x] Step 10: ROI 설정 API + Config + Directive API
-- [ ] Step 11: 로깅 시스템
+- [x] Step 11: 로깅 시스템
 
 ## Phase 3: 시각 분석 에이전트
 - [ ] Step 12: Agent 기본 인터페이스 + 전체 모델 정의
@@ -67,6 +67,95 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 11 완료 내역
+
+**생성/수정된 파일**:
+- `backend/services/logger.py` (신규 생성 — structlog 기반 에이전트별 로깅 서비스)
+- `backend/routers/logs.py` (신규 생성 — GET/GET-agents/DELETE /api/logs 라우터)
+- `backend/main.py` (수정 — logs_router를 /api prefix로 등록)
+- `requirements.txt` (수정 — structlog>=24.0.0 추가)
+- `tests/test_logger.py` (신규 생성 — 40개 테스트, 전부 통과)
+
+**structlog 버전**: 25.5.0
+
+**로그 엔트리 JSON 스키마**:
+```json
+{
+  "timestamp": "2025-05-18T12:00:00.000000Z",
+  "agent_name": "spec_agent",
+  "level": "info",
+  "message": "Processing started",
+  "extra": {"input_length": 150}
+}
+```
+
+**인메모리 버퍼 크기**: 1000 (`collections.deque(maxlen=1000)`, `threading.Lock`으로 thread-safe)
+
+**로그 파일 경로**: `logs/via2.log` (JSON Lines 포맷, 디렉토리 자동 생성)
+
+**API 엔드포인트 목록**:
+
+| 메서드 | 경로 | 상태 코드 | 설명 |
+|--------|------|-----------|------|
+| `GET` | `/api/logs` | 200 | 로그 조회 (쿼리: agent_name, level, limit) |
+| `GET` | `/api/logs/agents` | 200 | 로그가 있는 에이전트 이름 목록 |
+| `DELETE` | `/api/logs` | 200 | 로그 초기화 (인메모리 버퍼 + 파일) |
+
+**pytest 결과** (전체 250개: 250 passed):
+```
+250 passed in 56.79s
+```
+
+**신규 테스트 목록 (40개)**:
+- `test_get_agent_logger_returns_callable`
+- `test_get_agent_logger_different_names_are_independent`
+- `test_log_entry_has_required_fields`
+- `test_log_entry_agent_name_matches`
+- `test_log_entry_level_is_lowercase`
+- `test_log_entry_message_matches`
+- `test_log_entry_extra_dict_stored`
+- `test_log_entry_extra_is_empty_dict_when_no_kwargs`
+- `test_log_entry_timestamp_is_iso_string`
+- `test_debug_log_is_recorded`
+- `test_info_log_is_recorded`
+- `test_warning_log_is_recorded`
+- `test_error_log_is_recorded`
+- `test_get_logs_filter_by_level_returns_only_matching`
+- `test_get_logs_filter_by_level_error_excludes_info`
+- `test_get_logs_filter_by_agent_name`
+- `test_get_logs_compound_filter_agent_and_level`
+- `test_get_logs_limit_returns_most_recent`
+- `test_get_logs_limit_default_returns_all_up_to_100`
+- `test_get_logs_limit_larger_than_buffer_returns_all`
+- `test_buffer_max_1000_drops_oldest`
+- `test_concurrent_logging_does_not_corrupt_buffer`
+- `test_clear_logs_empties_buffer`
+- `test_log_file_is_created_on_first_log`
+- `test_log_file_contains_json_lines`
+- `test_clear_logs_truncates_log_file`
+- `test_get_agent_names_returns_unique_names`
+- `test_get_agent_names_empty_when_no_logs`
+- `test_api_get_logs_returns_200`
+- `test_api_get_logs_empty_initially`
+- `test_api_get_logs_returns_logged_entries`
+- `test_api_get_logs_filter_by_agent_name`
+- `test_api_get_logs_filter_by_level`
+- `test_api_get_logs_limit_param`
+- `test_api_get_logs_agents_returns_200`
+- `test_api_get_logs_agents_empty_initially`
+- `test_api_get_logs_agents_lists_agent_names`
+- `test_api_delete_logs_returns_200`
+- `test_api_delete_logs_clears_buffer`
+- `test_api_delete_logs_response_has_cleared_field`
+
+**이슈 및 해결 사항**:
+- structlog의 `DropEvent`를 마지막 프로세서에서 raise하여 stdout 출력을 차단하고 인메모리 버퍼와 파일 쓰기만 수행
+- `cache_logger_on_first_use=False`로 설정하여 테스트 간 프로세서 체인 재사용 문제 방지
+- `GET /api/logs/agents`를 `GET /api/logs` 보다 먼저 등록하여 FastAPI 라우트 매칭 순서 보장
+- `configure_log_file()` 함수를 테스트 전용 유틸로 추가하여 각 테스트가 독립적인 tmp_path에 로그 파일을 기록하도록 격리
 
 ---
 
