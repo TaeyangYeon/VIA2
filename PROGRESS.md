@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 17 (완료)
+## 현재 진행 단계: Step 18 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -24,7 +24,7 @@
 - [x] Step 15: Depth Agent (Depth-Anything-V2)
 - [x] Step 16: Material Agent (Florence-2 + DINOv2)
 - [x] Step 17: ROI Agent (Grounding DINO + SAM 2)
-- [ ] Step 18: 분석 결과 통합 모듈
+- [x] Step 18: 분석 결과 통합 모듈
 - [ ] Step 19: Vision Judge Agent (Qwen2.5-VL)
 
 ## Phase 4: 파이프라인 설계
@@ -67,6 +67,82 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 18 완료 내역
+
+**생성된 파일**:
+- `agents/scene_context.py` (신규 생성 — `build_scene_context()`: 4개 에이전트 결과 통합 모듈)
+- `tests/test_scene_context.py` (신규 생성 — 38개 테스트, 전부 통과)
+
+**build_scene_context 인터페이스**:
+```python
+def build_scene_context(
+    image_analysis_result: AgentResult,
+    depth_result: AgentResult,
+    material_result: AgentResult,
+    roi_result: AgentResult,
+) -> SceneContext
+```
+
+**SceneContext 필드 매핑**:
+
+| SceneContext 필드 | 소스 에이전트 | 비고 |
+|---|---|---|
+| `image_diagnosis` | ImageAnalysisAgent | 실패 시 기본값 ImageDiagnosis 생성 |
+| `image_diagnosis.depth_complexity` | DepthAgent (`depth_stats`) | 실패 시 0.0 유지 |
+| `image_diagnosis.has_shadow_region` | DepthAgent (`depth_stats`) | 실패 시 False 유지 |
+| `image_diagnosis.surface_type` | MaterialAgent (`surface_type`) | 실패 시 "" 유지 |
+| `depth_map` | DepthAgent (`depth_map`) | 실패 시 None |
+| `material_map` | MaterialAgent (`material_map`) | 실패 시 None |
+| `roi` | ROIAgent (정규화) | 실패 시 None |
+| `spec` | — | 기본값 `{}` |
+
+**Depth/Material 병합 로직**:
+- DepthAgent 성공 시 `depth_stats.depth_complexity`, `depth_stats.has_shadow_region`을 `ImageDiagnosis` 플레이스홀더 필드에 덮어씀
+- MaterialAgent 성공 시 `surface_type`을 `ImageDiagnosis.surface_type`에 덮어씀
+- 데이터 키 누락 시 기본값 유지 (`.get()` + 기본값 패턴)
+
+**ROI 정규화 로직**:
+- `mode == "manual"` → `data["roi"]` 사용
+- `mode == "auto"` → `data["recommended_roi"]` 사용 (None 가능)
+- `mode` 키 없음 / 에러 → `None`
+
+**부분 실패 처리**:
+- 각 에이전트 `status != "success"` 또는 `data` 키 누락 → 해당 필드에 기본값 적용, 나머지 에이전트 결과는 정상 처리
+- ImageAnalysisAgent 실패 → `_default_diagnosis()` 생성 후 Depth/Material 결과 병합 계속 진행
+
+**에러 처리 테이블**:
+
+| 실패 에이전트 | depth_map | material_map | roi | depth_complexity | surface_type |
+|---|---|---|---|---|---|
+| ImageAnalysis | 정상 | 정상 | 정상 | Depth에서 병합 | Material에서 병합 |
+| Depth | None | 정상 | 정상 | 0.0 | Material에서 병합 |
+| Material | 정상 | None | 정상 | Depth에서 병합 | "" |
+| ROI | 정상 | 정상 | None | Depth에서 병합 | Material에서 병합 |
+| 전부 | None | None | None | 0.0 | "" |
+
+**테스트 커버리지**:
+
+| 카테고리 | 테스트 수 |
+|---|---|
+| Basic | 5 |
+| Depth merging | 4 |
+| Material merging | 2 |
+| ROI normalization | 4 |
+| Partial failure | 8 |
+| All agents failed | 6 |
+| Validation | 3 |
+| Edge cases | 6 |
+| **합계** | **38** |
+
+**pytest 결과**:
+- `tests/test_scene_context.py`: 38 passed
+- 전체 테스트: 595 passed (이전 557 + 신규 38), 리그레션 없음
+
+**이슈 및 해결**:
+- 없음
 
 ---
 
