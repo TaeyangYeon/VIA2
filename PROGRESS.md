@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 11 (완료)
+## 현재 진행 단계: Step 12 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -18,7 +18,7 @@
 - [x] Step 11: 로깅 시스템
 
 ## Phase 3: 시각 분석 에이전트
-- [ ] Step 12: Agent 기본 인터페이스 + 전체 모델 정의
+- [x] Step 12: Agent 기본 인터페이스 + 전체 모델 정의
 - [ ] Step 13: Spec Agent (Qwen2.5-Coder)
 - [ ] Step 14: Image Analysis Agent (OpenCV)
 - [ ] Step 15: Depth Agent (Depth-Anything-V2)
@@ -67,6 +67,55 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 12 완료 내역
+
+**생성/수정된 파일**:
+- `agents/models.py` (신규 생성 — 17개 데이터 모델: 13개 dataclass + 3개 Enum + AgentDirectives)
+- `agents/base_agent.py` (신규 생성 — BaseAgent 추상 클래스: run() abstract, logger property, _log() helper)
+- `tests/test_models.py` (신규 생성 — 87개 테스트, 전부 통과)
+
+**데이터 모델 목록**:
+| 모델 | 종류 | 필드 수 |
+|------|------|---------|
+| `AgentResult` | dataclass | 4 |
+| `ImageDiagnosis` | dataclass | 19 |
+| `InspectionItem` | dataclass | 6 |
+| `InspectionPlan` | dataclass | 3 (+ `__post_init__`) |
+| `JudgementResult` | dataclass | 6 |
+| `AgentDirectives` | dataclass | 9 |
+| `PipelineBlock` | dataclass | 3 |
+| `ProcessingPipeline` | dataclass | 5 |
+| `BlueprintNode` | dataclass | 4 |
+| `BlueprintEdge` | dataclass | 3 |
+| `Blueprint` | dataclass | 5 |
+| `SceneContext` | dataclass | 5 |
+| `EvaluationResult` | dataclass | 4 |
+| `DecisionResult` | dataclass | 5 |
+| `AlgorithmCategory` | Enum | 5 members |
+| `FailureReason` | Enum | 6 members |
+| `DecisionVerdict` | Enum | 4 members |
+
+**BaseAgent 인터페이스**:
+- `__init__(name: str, directive: str = "")` — 이름과 선택적 지시문
+- `logger` property — `get_agent_logger(name)` BoundLogger 반환
+- `_log(level, message, **extra)` — logger에 위임
+- `run(**kwargs) -> AgentResult` — 추상 메서드 (서브클래스 구현 필수)
+
+**pytest 결과** (전체 337개: 337 passed):
+```
+337 passed in 52.23s
+```
+
+**신규 테스트 수**: 87개 (전체 250개 → 337개)
+
+**이슈 및 해결 사항**:
+- `SceneContext.depth_map`, `material_map`은 numpy array 대응을 위해 `Optional[Any]` 타입 사용 (numpy/cv2/torch import 없음)
+- `InspectionPlan.__post_init__`으로 `total_items = len(items)` 자동 계산
+- `dataclass` mutable default 문제: list/dict 필드 전부 `field(default_factory=...)` 사용하여 인스턴스 간 공유 방지
+- `BaseAgent._logger`를 인스턴스 변수로 저장 후 `logger` property로 노출 (structlog BoundLogger 타입)
 
 ---
 
