@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 15 (완료)
+## 현재 진행 단계: Step 16 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -22,7 +22,7 @@
 - [x] Step 13: Spec Agent (Qwen2.5-Coder)
 - [x] Step 14: Image Analysis Agent (OpenCV)
 - [x] Step 15: Depth Agent (Depth-Anything-V2)
-- [ ] Step 16: Material Agent (Florence-2 + DINOv2)
+- [x] Step 16: Material Agent (Florence-2 + DINOv2)
 - [ ] Step 17: ROI Agent (Grounding DINO + SAM 2)
 - [ ] Step 18: 분석 결과 통합 모듈
 - [ ] Step 19: Vision Judge Agent (Qwen2.5-VL)
@@ -67,6 +67,95 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 16 완료 내역
+
+**생성된 파일**:
+- `agents/material_lut.py` (신규 생성 — Material LUT: 8가지 재질 × 4개 속성)
+- `agents/material_agent.py` (신규 생성 — `MaterialAgent(BaseAgent)`: Florence-2 + DINOv2 원격 클라이언트)
+- `tests/test_material_agent.py` (신규 생성 — 41개 테스트, 전부 통과)
+
+**MaterialAgent 인터페이스**:
+```python
+MaterialAgent(remote_url: str, directive: str = "")
+async def run(
+    self,
+    image: np.ndarray,          # BGR or 2D grayscale
+    roi: Optional[dict] = None, # {x1, y1, x2, y2}
+    **kwargs,
+) -> AgentResult
+# status="success", data={"surface_type", "material_map", "confidence", "regions", "feature_stats"}
+```
+
+**AgentResult data 필드**:
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `surface_type` | `str` | 주요 재질 ("metal", "plastic", "glass" 등) |
+| `material_map` | `dict` | 영역별 재질 분류 `{"label": {"type", "confidence", "bbox"}}` |
+| `confidence` | `float` | 전체 분류 신뢰도 (0.0–1.0) |
+| `regions` | `list` | Florence-2 원본 영역 감지 결과 |
+| `feature_stats` | `dict` | DINOv2 특징 통계: `{"feature_dim": int, "feature_norm": float, "top_similarities": dict}` |
+
+**Material LUT 재질 목록 및 광학 속성**:
+| 재질 | specular | diffuse | roughness |
+|------|----------|---------|-----------|
+| metal | 0.90 | 0.30 | 0.10 |
+| plastic | 0.50 | 0.60 | 0.30 |
+| glass | 0.95 | 0.10 | 0.02 |
+| rubber | 0.10 | 0.70 | 0.80 |
+| ceramic | 0.60 | 0.50 | 0.20 |
+| wood | 0.15 | 0.80 | 0.60 |
+| fabric | 0.05 | 0.90 | 0.90 |
+| paper | 0.10 | 0.85 | 0.70 |
+
+`reference_features`: 384차원 영벡터 (placeholder) — Step 45 Colab 실측값으로 대체 예정
+
+**원격 추론 프로토콜**:
+| 모델 | 엔드포인트 | 요청 payload | 응답 |
+|------|-----------|-------------|------|
+| Florence-2 | `POST {remote_url}/florence2/caption` | `{"image": "<base64 JPEG>"}` | `{"caption": str, "regions": [...]}` |
+| DINOv2 | `POST {remote_url}/dinov2/features` | `{"image": "<base64 JPEG>"}` | `{"features": [[float,...]], "shape": [N, D]}` |
+
+- `httpx.AsyncClient` 단일 컨텍스트 내에서 두 모델 순차 호출 (timeout=60s)
+- ROI 제공 시 전송 전에 이미지를 ROI 영역으로 크롭
+- 모델 로컬 로드 없음 — 모든 추론은 Colab GPU에서만 실행
+
+**에러 처리**:
+| 조건 | error_message |
+|------|---------------|
+| 이미지 < 3×3 | `"Image too small for material analysis"` |
+| Florence-2 ConnectError | `"Florence-2 server unreachable: {url}"` |
+| DINOv2 ConnectError | `"DINOv2 server unreachable: {url}"` |
+| Florence-2 응답 형식 오류 | `"Invalid Florence-2 response format"` |
+| DINOv2 응답 형식 오류 | `"Invalid DINOv2 response format"` |
+| 양쪽 모두 실패 | Florence-2 에러 메시지 우선 반환 |
+| 한쪽만 실패 | `status="success"` (부분 데이터, confidence 0.5 기준) |
+
+**테스트 커버리지**:
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 클래스 인스턴스화 | 5 |
+| AgentResult 구조 검증 | 8 |
+| Material LUT 검증 | 4 |
+| 코사인 유사도 | 3 |
+| Florence-2 원격 호출 | 3 |
+| DINOv2 원격 호출 | 3 |
+| 결합 분류 동작 | 3 |
+| ROI 크롭 | 2 |
+| 에러 처리 | 6 |
+| 부분 실패 처리 | 2 |
+| 그레이스케일 입력 | 1 |
+| directive 전달 | 1 |
+| **합계** | **41** |
+
+**pytest 결과**: 500 passed (기존 459 + 신규 41), 리그레션 없음
+
+**이슈 및 해결**:
+- 없음 (TDD Red→Green 한 사이클로 완료)
+- 코사인 유사도에서 영벡터(LUT placeholder) 처리: `norm == 0.0` 가드로 NaN 방지, 유사도 0.0 반환
+- Florence-2/DINOv2 두 호출을 단일 `async with httpx.AsyncClient()` 블록 내 순차 처리 → 테스트에서 `side_effect` URL 기반 라우팅으로 두 엔드포인트 독립 모킹
 
 ---
 
