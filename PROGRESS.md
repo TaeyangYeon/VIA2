@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 18 (완료)
+## 현재 진행 단계: Step 19 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -25,7 +25,7 @@
 - [x] Step 16: Material Agent (Florence-2 + DINOv2)
 - [x] Step 17: ROI Agent (Grounding DINO + SAM 2)
 - [x] Step 18: 분석 결과 통합 모듈
-- [ ] Step 19: Vision Judge Agent (Qwen2.5-VL)
+- [x] Step 19: Vision Judge Agent (Qwen2.5-VL)
 
 ## Phase 4: 파이프라인 설계
 - [ ] Step 20: Pipeline Block Library
@@ -67,6 +67,82 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 19 완료 내역
+
+**생성된 파일**:
+- `agents/vision_judge_agent.py` (신규 생성 — `VisionJudgeAgent(BaseAgent)`: Qwen2.5-VL 원격 클라이언트)
+- `agents/prompts/vision_judge_prompt.py` (신규 생성 — `build_vision_judge_prompt()`: VLM 평가 프롬프트 빌더)
+- `tests/test_vision_judge.py` (신규 생성 — 47개 테스트, 전부 통과)
+
+**VisionJudgeAgent 인터페이스**:
+```python
+VisionJudgeAgent(remote_url: str, directive: str = "")
+async def run(
+    self,
+    original_image: np.ndarray,
+    processed_image: np.ndarray,
+    purpose: str,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+**AgentResult data 필드**:
+
+| 키 | 타입 | 설명 |
+|---|---|---|
+| `judgement` | dict | JudgementResult (asdict) |
+| `raw_response` | str | 서버 원시 응답 텍스트 |
+
+**원격 추론 프로토콜**:
+- 엔드포인트: `POST {remote_url}/vision_judge/evaluate`
+- 요청: `{"original_image": "<base64 JPEG>", "processed_image": "<base64 JPEG>", "purpose": str, "directive": str}`
+- 응답: `{"visibility_score": float, "separability_score": float, "measurability_score": float, "problems": [str], "next_suggestion": str}`
+- timeout: 60.0초
+- 그레이스케일 이미지는 자동으로 BGR 변환 후 JPEG 인코딩
+
+**build_vision_judge_prompt 설명**:
+- 입력: `purpose: str`, `directive: str = ""`
+- 출력: 단일 문자열 프롬프트 — VLM이 원본/처리 이미지를 비교하여 가시성/분리성/측정성 점수를 strict JSON으로 출력하도록 지시
+- directive 제공 시 프롬프트 끝에 "Additional evaluation guidance: {directive}" 추가
+
+**에러 처리 테이블**:
+
+| 조건 | 동작 |
+|---|---|
+| original_image < 3×3 | status="error", "Original image too small for vision judge" |
+| processed_image < 3×3 | status="error", "Processed image too small for vision judge" |
+| httpx.ConnectError | status="error", "Vision Judge server unreachable: {url}" |
+| 응답 키 누락 / JSON 파싱 실패 | status="error", "Invalid Vision Judge response format" |
+| HTTP 비-2xx | status="error", "Vision Judge server error: {status_code}" |
+| 점수 범위 초과 | [0.0, 1.0]으로 클램핑 |
+
+**테스트 커버리지**:
+
+| 카테고리 | 테스트 수 |
+|---|---|
+| Class instantiation | 5 |
+| AgentResult structure | 6 |
+| JudgementResult fields | 6 |
+| Score computation | 4 |
+| Good vs bad processing | 2 |
+| Prompt building | 6 |
+| Remote HTTP call | 5 |
+| Error handling | 7 |
+| Grayscale input | 1 |
+| Directive handling | 3 |
+| Edge cases | 2 |
+| **합계** | **47** |
+
+**pytest 결과**:
+- `tests/test_vision_judge.py`: 47 passed
+- 전체 테스트: 642 passed (이전 595 + 신규 47), 리그레션 없음
+
+**이슈 및 해결**:
+- 없음
 
 ---
 
