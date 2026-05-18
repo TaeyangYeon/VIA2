@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 16 (완료)
+## 현재 진행 단계: Step 17 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -23,7 +23,7 @@
 - [x] Step 14: Image Analysis Agent (OpenCV)
 - [x] Step 15: Depth Agent (Depth-Anything-V2)
 - [x] Step 16: Material Agent (Florence-2 + DINOv2)
-- [ ] Step 17: ROI Agent (Grounding DINO + SAM 2)
+- [x] Step 17: ROI Agent (Grounding DINO + SAM 2)
 - [ ] Step 18: 분석 결과 통합 모듈
 - [ ] Step 19: Vision Judge Agent (Qwen2.5-VL)
 
@@ -67,6 +67,94 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 17 완료 내역
+
+**생성된 파일**:
+- `agents/roi_agent.py` (신규 생성 — `ROIAgent(BaseAgent)`: Grounding DINO + SAM 2 원격 클라이언트)
+- `tests/test_roi_agent.py` (신규 생성 — 57개 테스트, 전부 통과)
+
+**ROIAgent 인터페이스**:
+```python
+ROIAgent(remote_url: str, directive: str = "")
+async def run(
+    self,
+    image: np.ndarray,              # BGR or 2D grayscale
+    roi: Optional[dict] = None,     # {x1, y1, x2, y2} — manual ROI
+    text_query: Optional[str] = None,  # text for auto detection
+    **kwargs,
+) -> AgentResult
+```
+
+**AgentResult data 필드 (manual mode)**:
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `mode` | `str` | `"manual"` |
+| `roi` | `dict` | 클램핑된 ROI 좌표 `{x1, y1, x2, y2}` |
+| `roi_stats` | `dict` | `{"area_ratio": float, "aspect_ratio": float}` |
+
+**AgentResult data 필드 (auto mode)**:
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `mode` | `str` | `"auto"` |
+| `query` | `str` | 사용된 텍스트 쿼리 |
+| `detections` | `list` | DINO 감지 결과 `[{"box", "score", "label"}, ...]` |
+| `recommended_roi` | `dict\|None` | 추천 ROI `{x1, y1, x2, y2}` (감지 없으면 None) |
+| `masks` | `list` | SAM 2 마스크 `[{"bbox", "area", "segmentation_rle"}, ...]` |
+| `confidence` | `float` | 최종 신뢰도 점수 |
+| `message` | `str` | 감지 없을 때 안내 메시지 (optional) |
+
+**원격 추론 프로토콜**:
+| 모델 | 엔드포인트 | 요청 payload | 응답 |
+|------|-----------|-------------|------|
+| Grounding DINO | `POST {remote_url}/grounding_dino/detect` | `{"image": "<base64 JPEG>", "text_query": str, "threshold": 0.3}` | `{"boxes": [[x1,y1,x2,y2],...], "scores": [...], "labels": [...]}` |
+| SAM 2 | `POST {remote_url}/sam2/segment` | `{"image": "<base64 JPEG>", "boxes": [[x1,y1,x2,y2],...]}` | `{"masks": [{"bbox","area","segmentation_rle"}], "scores": [...]}` |
+
+- `httpx.AsyncClient` 단일 컨텍스트 내에서 DINO → SAM 2 순차 호출 (timeout=60s)
+- DINO 감지 결과가 없으면 SAM 2 호출 생략
+- 모델 로컬 로드 없음 — 모든 추론은 Colab GPU에서만 실행
+
+**에러 처리**:
+| 조건 | 동작 | error_message |
+|------|------|---------------|
+| 이미지 < 3×3 | `status="error"` | `"Image too small for ROI analysis"` |
+| roi도 text_query도 없음 | `status="error"` | `"No ROI or text query provided"` |
+| ROI 클램핑 후 너비/높이 0 | `status="error"` | `"ROI has zero width or height after clamping to image bounds"` |
+| DINO ConnectError | `status="error"` | `"Grounding DINO server unreachable: {url}"` |
+| DINO 응답 형식 오류 | `status="error"` | `"Invalid Grounding DINO response format"` |
+| DINO 감지 없음 | `status="success"` | — (data에 message 포함) |
+| SAM 2 실패 (연결/형식) | `status="success"` (부분) | DINO box를 recommended_roi로 사용 |
+| roi + text_query 동시 제공 | auto mode 우선 | — |
+
+**테스트 커버리지**:
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 클래스 인스턴스화 | 5 |
+| neither roi nor text_query 에러 | 2 |
+| 이미지 너무 작음 에러 | 2 |
+| manual ROI 정상 동작 | 11 |
+| manual ROI 클램핑 | 2 |
+| manual ROI 클램핑 후 무효 | 2 |
+| auto mode 성공 (DINO + SAM 2) | 11 |
+| 원격 호출 검증 | 6 |
+| auto mode 감지 없음 | 5 |
+| roi + text_query 동시 제공 | 1 |
+| DINO 서버 연결 불가 | 3 |
+| SAM 2 서버 연결 불가 (부분 성공) | 3 |
+| DINO 응답 형식 오류 | 1 |
+| SAM 2 응답 형식 오류 (부분 성공) | 1 |
+| 그레이스케일 입력 | 2 |
+| **합계** | **57** |
+
+**pytest 결과**: 557 passed (기존 500 + 신규 57), 리그레션 없음
+
+**이슈 및 해결**:
+- 없음 (TDD Red→Green 한 사이클로 완료)
+- SAM 2 실패 시 부분 성공 처리: `except httpx.ConnectError` + `except Exception` 두 케이스 모두 `sam2_data = None` 처리 → DINO 박스를 fallback `recommended_roi`로 반환
+- DINO 감지 없음 → SAM 2 호출 생략 (mock call_count=1 검증)
+- ROI 수동 모드는 HTTP 호출 없음 (완전 로컬 계산, no mock 필요)
 
 ---
 
