@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 14 (완료)
+## 현재 진행 단계: Step 15 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -21,7 +21,7 @@
 - [x] Step 12: Agent 기본 인터페이스 + 전체 모델 정의
 - [x] Step 13: Spec Agent (Qwen2.5-Coder)
 - [x] Step 14: Image Analysis Agent (OpenCV)
-- [ ] Step 15: Depth Agent (Depth-Anything-V2)
+- [x] Step 15: Depth Agent (Depth-Anything-V2)
 - [ ] Step 16: Material Agent (Florence-2 + DINOv2)
 - [ ] Step 17: ROI Agent (Grounding DINO + SAM 2)
 - [ ] Step 18: 분석 결과 통합 모듈
@@ -67,6 +67,64 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 15 완료 내역
+
+**생성된 파일**:
+- `agents/depth_agent.py` (신규 생성 — `DepthAgent(BaseAgent)`: 원격 Depth-Anything-V2 클라이언트)
+- `tests/test_depth_agent.py` (신규 생성 — 35개 테스트, 전부 통과)
+
+**DepthAgent 인터페이스**:
+```python
+DepthAgent(remote_url: str, directive: str = "")
+async def run(
+    self,
+    image: np.ndarray,       # BGR or 2D grayscale
+    roi: Optional[dict] = None,  # {x1, y1, x2, y2}
+    **kwargs,
+) -> AgentResult
+# data={"depth_map": np.ndarray, "depth_stats": dict}, status="success"
+```
+
+**depth_stats 필드 및 계산 방식**:
+| 필드 | 계산 방식 |
+|------|----------|
+| `depth_complexity` | `min(std(depth) × 2, 1.0)` — ROI 내 깊이값 표준편차 정규화 |
+| `has_shadow_region` | `depth_gradient_max > 0.3` — Sobel 최대 기울기 임계값 판별 |
+| `depth_range` | `max(depth) − min(depth)` — ROI 내 깊이 범위 |
+| `depth_mean` | `mean(depth)` — ROI 내 평균 깊이 |
+| `depth_gradient_max` | `max(√(Sobel_x² + Sobel_y²))` — 최대 기울기 크기 |
+
+**원격 추론 프로토콜**:
+- 요청: `POST {remote_url}/depth` with `{"image": "<base64 JPEG>"}`
+- 응답: `{"depth_map": "<base64 float32 bytes>", "shape": [H, W]}`
+- 로컬 로드 없음 — 모델은 Colab GPU에서만 실행
+
+**에러 처리**:
+- 이미지 크기 < 3×3 → `"Image too small for depth estimation"`
+- 서버 연결 실패 → `"Depth server unreachable: {url}"`
+- 응답 형식 오류 → `"Invalid depth response format"`
+
+**테스트 커버리지**:
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 클래스 인스턴스화 | 5 |
+| AgentResult 구조 검증 | 6 |
+| depth_stats 필드 존재 확인 | 1 |
+| depth_complexity 범위/동작 | 3 |
+| has_shadow_region 감지 | 2 |
+| depth_range 계산 | 2 |
+| depth_mean 계산 | 2 |
+| depth_gradient_max 계산 | 2 |
+| ROI 크롭 적용 | 2 |
+| 원격 호출 URL/페이로드 검증 | 2 |
+| 에러 처리 (small/unreachable/invalid) | 5 |
+| 그레이스케일 입력 처리 | 1 |
+| **합계** | **35** |
+
+**pytest 결과**: 459 passed (기존 424 + 신규 35), 리그레션 없음
 
 ---
 
