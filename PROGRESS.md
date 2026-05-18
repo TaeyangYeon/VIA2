@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 13 (완료)
+## 현재 진행 단계: Step 14 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -20,7 +20,7 @@
 ## Phase 3: 시각 분석 에이전트
 - [x] Step 12: Agent 기본 인터페이스 + 전체 모델 정의
 - [x] Step 13: Spec Agent (Qwen2.5-Coder)
-- [ ] Step 14: Image Analysis Agent (OpenCV)
+- [x] Step 14: Image Analysis Agent (OpenCV)
 - [ ] Step 15: Depth Agent (Depth-Anything-V2)
 - [ ] Step 16: Material Agent (Florence-2 + DINOv2)
 - [ ] Step 17: ROI Agent (Grounding DINO + SAM 2)
@@ -67,6 +67,75 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 14 완료 내역
+
+**생성된 파일**:
+- `agents/image_analysis_agent.py` (신규 생성 — `ImageAnalysisAgent(BaseAgent)`: 순수 OpenCV 이미지 분석)
+- `tests/test_image_analysis.py` (신규 생성 — 49개 테스트, 전부 통과)
+
+**ImageAnalysisAgent 인터페이스**:
+```python
+ImageAnalysisAgent(directive: str = "")
+async def run(
+    self,
+    image: np.ndarray,      # BGR or 2D grayscale
+    roi: Optional[dict] = None,  # {x1, y1, x2, y2}
+    **kwargs,
+) -> AgentResult
+# data={"diagnosis": ImageDiagnosis}, status="success"
+```
+
+**계산 메트릭 목록**:
+| 필드 | 계산 방식 |
+|------|----------|
+| `contrast` | 그레이스케일 std / 255 (RMS contrast) |
+| `noise_level` | Laplacian variance |
+| `edge_density` | Canny 엣지 픽셀 비율 |
+| `lighting_uniformity` | 4×4 블록 휘도 평균의 변동계수 (CV) |
+| `illumination_type` | CV 임계값 + 중심/외곽 비교 + 위치 상관관계 |
+| `noise_frequency` | FFT 에너지 중 고주파 비율 |
+| `reflection_level` | 픽셀값 > 230 비율 |
+| `blob_feasibility` | clip(contrast × 2, 0, 1) |
+| `blob_count_estimate` | Otsu 이진화 + connectedComponents |
+| `color_discriminability` | 채널 간 최대 평균 차이 / 128 |
+| `dominant_channel_ratio` | max(채널 평균) / sum(채널 평균) |
+| `structural_regularity` | 정규화 자기상관 (소규모 이동) |
+| `pattern_repetition` | FFT 기반 자기상관 함수 오프센터 피크 |
+| `optimal_color_space` | gray / hsv_s / lab_l / bgr 판별 |
+| `threshold_candidate` | Otsu 임계값 |
+| `edge_sharpness` | 평균 Sobel 기울기 크기 |
+| `surface_type` | `""` (Depth/Material Agent 예약) |
+| `depth_complexity` | `0.0` (Depth Agent 예약) |
+| `has_shadow_region` | `False` (Material Agent 예약) |
+
+**테스트 커버리지**:
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 클래스 인스턴스화 | 3 |
+| AgentResult 구조 검증 | 4 |
+| 메트릭 범위 유효성 | 14 |
+| illumination_type 분류 | 4 |
+| noise_frequency 분류 | 3 |
+| 비교 동작 (노이즈/대비) | 3 |
+| 그레이스케일 입력 처리 | 3 |
+| ROI 크롭 분석 | 2 |
+| 엣지 케이스 (1×1, 3×3, 흑/백) | 8 |
+| depth/material 기본값 | 3 |
+| directive 전달 | 1 |
+| optimal_color_space | 2 |
+| **합계** | **49** |
+
+**pytest 결과** (전체 424개: 424 passed):
+- 신규: 49 passed (test_image_analysis.py)
+- 기존 회귀 없음: 375 passed
+
+**이슈 및 해결**:
+- 초소형 이미지(1×1, 3×3): Laplacian, Canny, Sobel 등 커널 연산 최소 크기 가드 적용 (`h < 3 or w < 3` 체크)
+- 단색 이미지 분모 0: 모든 나눗셈에 `+ 1e-6` 엡실론 추가
+- Otsu 실패 케이스: `try/except cv2.error` 처리
 
 ---
 
