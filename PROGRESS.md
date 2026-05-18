@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 12 (완료)
+## 현재 진행 단계: Step 13 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -19,7 +19,7 @@
 
 ## Phase 3: 시각 분석 에이전트
 - [x] Step 12: Agent 기본 인터페이스 + 전체 모델 정의
-- [ ] Step 13: Spec Agent (Qwen2.5-Coder)
+- [x] Step 13: Spec Agent (Qwen2.5-Coder)
 - [ ] Step 14: Image Analysis Agent (OpenCV)
 - [ ] Step 15: Depth Agent (Depth-Anything-V2)
 - [ ] Step 16: Material Agent (Florence-2 + DINOv2)
@@ -67,6 +67,87 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 13 완료 내역
+
+**생성/수정된 파일**:
+- `agents/prompts/spec_prompt.py` (신규 생성 — `build_spec_prompt()` 함수: system/user 프롬프트 쌍 반환)
+- `agents/spec_agent.py` (신규 생성 — `SpecAgent(BaseAgent)`: LLM 호출 + JSON 파싱 + `AgentResult` 반환)
+- `tests/test_spec_agent.py` (신규 생성 — 38개 테스트, 전부 통과)
+
+**Spec Agent 출력 데이터 구조**:
+```python
+{
+    "mode": "inspection" | "align",
+    "goal": str,           # 영문 목표 설명
+    "success_criteria": {
+        "accuracy":    float | None,
+        "fp_rate":     float | None,
+        "fn_rate":     float | None,
+        "coord_error": float | None,
+    },
+    "raw_input": str       # 원본 사용자 텍스트
+}
+```
+
+**프롬프트 템플릿 구조** (`agents/prompts/spec_prompt.py`):
+- `build_spec_prompt(user_text, roi=None, directive=None) -> (system_prompt, user_prompt)`
+- **system_prompt**: JSON-only 출력 강제, mode/goal/success_criteria/raw_input 스키마 정의, inspection/align 판단 규칙
+- **user_prompt**: `"User request: {user_text}"` + ROI 좌표 라인(roi 있을 때만) + `"Additional directive: {directive}"` 라인(directive 있을 때만)
+
+**SpecAgent 인터페이스**:
+```python
+SpecAgent(
+    adapter: BaseAIAdapter,
+    model: str = "qwen2.5-coder:7b",
+    directive: str = "",
+)
+async def run(
+    self,
+    user_text: str,
+    roi: dict | None = None,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+- `directive` 우선순위: `run(directive=...)` > 생성자 `directive`
+- 에러 시 `AgentResult(status="error", data={}, error_message=..., execution_time_ms=...)`
+
+**JSON 파싱 로직** (`_strip_fences` + `_parse_response`):
+- ` ```json ... ``` ` 마크다운 펜스 제거 (정규식)
+- ` ``` ... ``` ` 언어 태그 없는 펜스도 제거
+- 앞뒤 공백 strip 후 `json.loads()`
+- 빈 문자열 → `ValueError("Empty response from adapter")`
+
+**테스트 커버리지**:
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 클래스 인스턴스화 | 4 |
+| 한국어 inspection 요청 | 2 |
+| 영어 align 요청 | 2 |
+| AgentResult 필드 검증 | 4 |
+| JSON 파싱 견고성 | 6 |
+| 어댑터 에러 처리 | 2 |
+| Directive 주입 | 4 |
+| ROI 좌표 포함 | 3 |
+| build_spec_prompt 유틸 | 9 |
+| 어댑터 호출 검증 | 2 |
+| **합계** | **38** |
+
+**pytest 결과** (전체 375개: 375 passed):
+```
+375 passed in 54.39s
+```
+
+**신규 테스트 수**: 38개 (기존 337개 → 375개)
+
+**이슈 및 해결 사항**:
+- 없음 (TDD Red→Green 한 사이클로 완료)
+- `directive` 우선순위 처리: `run()` 호출 시 `directive=None`은 "명시적으로 비우기"가 아니라 "생성자 값 사용"으로 해석하여 `if directive is not None` 조건으로 구분
+- `generate_text()` 첫 번째 위치 인수 = user_prompt (system_prompt는 kwargs): `adapter.generate_text(user_prompt, self.model, system_prompt=system_prompt)` 순서가 `BaseAIAdapter` 시그니처와 일치
+- 테스트에서 mock call_args 검증: `call_args.args[0]`(prompt) 또는 `call_args.kwargs["prompt"]` 모두 처리하는 방어적 코드 사용
 
 ---
 
