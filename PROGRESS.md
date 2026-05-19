@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 22 (완료)
+## 현재 진행 단계: Step 23 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -31,7 +31,7 @@
 - [x] Step 20: Pipeline Block Library
 - [x] Step 21: Pipeline Composer
 - [x] Step 22: Parameter Searcher + ProcessingQualityEvaluator
-- [ ] Step 23: Algorithm Selector (결정 트리)
+- [x] Step 23: Algorithm Selector (결정 트리)
 - [ ] Step 24: Inspection Plan Agent
 - [ ] Step 25: Vision Judge 기반 파이프라인 선정 루프
 - [ ] Step 26: Test Agent (Inspection, 항목별)
@@ -67,6 +67,77 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 23 완료 내역
+
+### 생성된 파일
+- `agents/algorithm_selector.py` (신규)
+- `tests/test_algorithm_selector.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### AlgorithmSelector 인터페이스
+
+```python
+class AlgorithmSelector(BaseAgent):
+    def __init__(self, directive: str = "") -> None
+    async def run(self, scene_context: SceneContext, **kwargs) -> AgentResult
+```
+
+- name: `"algorithm_selector"`
+- 순수 결정론적 규칙 기반 분류기 (LLM 호출 없음)
+- directive는 로그에만 기록되며 결정 결과에 영향 없음
+
+### 결정 트리 로직
+| 우선순위 | 조건 | 결과 |
+|----------|------|------|
+| 1 | `contrast > 0.4` AND `blob_feasibility > 0.6` | BLOB |
+| 2 | `color_discriminability > 0.5` | COLOR_FILTER |
+| 3 | `edge_density > 0.3` AND `structural_regularity > 0.5` | EDGE_DETECTION |
+| 4 | `pattern_repetition > 0.7` | TEMPLATE_MATCHING |
+| 5 | (기본 폴백) | BLOB |
+
+- 임계값 비교: 엄격한 `>` (같은 경우 미충족)
+- 첫 번째 매칭 조건에서 즉시 반환 (short-circuit)
+
+### AgentResult data 필드
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `category` | `str` | AlgorithmCategory 열거형의 `.value` 문자열 |
+| `reason` | `str` | 선택 이유 (어떤 조건이 충족됐는지 설명) |
+| `scores` | `dict` | 결정에 관여한 6개 진단 지표 값 |
+| `decision_path` | `list[str]` | 각 조건 체크 결과 (`[MATCH]`/`[SKIP]`/`[DEFAULT]`) |
+
+### 에러 처리
+| 조건 | status | error_message |
+|------|--------|---------------|
+| `scene_context is None` | `"error"` | `"SceneContext is required"` |
+| `scene_context.image_diagnosis is None` | `"error"` | `"ImageDiagnosis is required in SceneContext"` |
+
+### Directive 처리
+- directive가 있으면 `info` 레벨 로그로 기록
+- 결정 트리 로직은 directive와 무관하게 동일하게 동작
+
+### 테스트 커버리지
+| 카테고리 | 테스트 수 |
+|----------|----------|
+| Instantiation | 2 |
+| AgentResultStructure | 10 |
+| DecisionTreePaths | 5 |
+| DecisionPriority | 5 |
+| BoundaryValues | 7 |
+| ErrorHandling | 4 |
+| DirectiveHandling | 2 |
+| **합계** | **35** |
+
+### pytest 결과
+- 신규 테스트: 35개 (모두 통과)
+- 전체 테스트: 887개 (regressions 없음)
+- 실행 시간: ~55초
+
+### 특이사항 없음
+`AlgorithmCategory.GEOMETRIC`은 결정 트리에 포함되지 않음 (PLAN.md 명세에 따라 5개 enum 중 4개만 사용; default는 BLOB).
 
 ---
 
