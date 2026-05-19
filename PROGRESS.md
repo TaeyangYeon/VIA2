@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 20 (완료)
+## 현재 진행 단계: Step 21 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -29,7 +29,7 @@
 
 ## Phase 4: 파이프라인 설계
 - [x] Step 20: Pipeline Block Library
-- [ ] Step 21: Pipeline Composer
+- [x] Step 21: Pipeline Composer
 - [ ] Step 22: Parameter Searcher + ProcessingQualityEvaluator
 - [ ] Step 23: Algorithm Selector (결정 트리)
 - [ ] Step 24: Inspection Plan Agent
@@ -67,6 +67,78 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 21 완료 내역
+
+### 생성된 파일
+- `agents/pipeline_composer.py` (신규)
+- `tests/test_pipeline_composer.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### PipelineComposer 인터페이스
+```python
+class PipelineComposer(BaseAgent):
+    def __init__(self, directive: str = "") -> None: ...
+    async def run(self, scene_context: SceneContext, **kwargs) -> AgentResult: ...
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `pipelines` | `list[ProcessingPipeline]` | 3~5개 후보 파이프라인 |
+| `num_candidates` | `int` | 생성된 파이프라인 수 |
+| `matching_blocks_summary` | `dict[str, int]` | 카테고리별 매칭 블록 수 |
+
+### Pipeline Composition Rules
+- 모든 파이프라인: color_space → (denoise) → threshold → (morphology) → (edge) 순서 유지
+- color_space 블록 정확히 1개 필수 (폴백: grayscale)
+- threshold 블록 정확히 1개 필수 (폴백: dynamic_threshold)
+- denoise 선택 (noise_level > 10 시 권장)
+- morphology / edge 선택
+- `lighting_uniformity > 0.25`이면 최소 1개 파이프라인에 CLAHE 포함 필수
+
+### Directive 처리
+| 키워드 | 동작 |
+|--------|------|
+| `clahe` (대소문자 무관) | 모든 파이프라인의 denoise 위치에 CLAHE 강제 삽입 |
+
+### 다양성 전략
+1. **Basic** – 첫 번째 CS + 기본 denoise + 첫 번째 threshold
+2. **Alt** – 두 번째 CS + 두 번째 denoise + 두 번째 threshold
+3. **Morph** – 첫 번째 CS + 형태학 블록 추가
+4. **Edge** – 첫 번째 CS + 엣지 블록 추가
+5. **Full** – 첫 번째 CS + morph + edge 조합
+- 매칭 블록이 부족할 경우 레지스트리에서 `opening`, `closing`, `sobel`, `canny`를 탐색 블록으로 보충하여 중복 없는 파이프라인 최소 3개 보장
+
+### 테스트 커버리지
+
+| 카테고리 | 테스트 수 |
+|----------|-----------|
+| 클래스 인스턴스화 | 5 |
+| AgentResult 구조 | 8 |
+| 파이프라인 수 (3~5) | 4 |
+| 파이프라인 구조 | 5 |
+| 블록 구조 | 5 |
+| 블록 순서 | 6 |
+| CLAHE 조명 처리 | 2 |
+| Directive 처리 | 4 |
+| 파이프라인 다양성 | 3 |
+| 에러 처리 | 4 |
+| matching_blocks_summary | 3 |
+| 고노이즈 진단 | 2 |
+| 불균일 조명 진단 | 2 |
+| **합계** | **53** |
+
+### pytest 결과
+- 신규 테스트: 54개 통과
+- 전체 테스트: 798개 통과 / 0 실패
+
+### 이슈 및 해결 사항
+- **실제 모델 필드명 불일치**: 스펙 문서의 `PipelineBlock(name, category, params)` 는 실제로 `PipelineBlock(block_id, block_type, params)`, `ProcessingPipeline(name, ...)` 은 `ProcessingPipeline(pipeline_id, ...)` 임 — 소스 파일 직접 확인 후 실제 필드명 사용
+- **최소 진단 다양성**: matching 블록이 grayscale + dynamic_threshold 뿐일 때도 3개 이상의 고유 파이프라인 보장 — opening/closing/sobel/canny를 탐색 블록으로 보충
 
 ---
 
