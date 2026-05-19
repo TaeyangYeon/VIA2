@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 19 (완료)
+## 현재 진행 단계: Step 20 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -28,7 +28,7 @@
 - [x] Step 19: Vision Judge Agent (Qwen2.5-VL)
 
 ## Phase 4: 파이프라인 설계
-- [ ] Step 20: Pipeline Block Library
+- [x] Step 20: Pipeline Block Library
 - [ ] Step 21: Pipeline Composer
 - [ ] Step 22: Parameter Searcher + ProcessingQualityEvaluator
 - [ ] Step 23: Algorithm Selector (결정 트리)
@@ -67,6 +67,97 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 20 완료 내역
+
+**생성된 파일**:
+- `agents/pipeline_blocks.py` (신규 생성 — `BlockDefinition` 데이터클래스, `BLOCK_REGISTRY`, 조회/필터 함수 4종)
+- `tests/test_pipeline_blocks.py` (신규 생성 — 102개 테스트, 전부 통과)
+
+**BlockDefinition 인터페이스**:
+```python
+@dataclass
+class BlockDefinition:
+    name: str                                    # 블록 ID
+    category: str                                # "color_space" | "denoise" | "threshold" | "morphology" | "edge"
+    when: Callable[[ImageDiagnosis], bool]        # 조건 함수
+    params: dict                                 # 파라미터 탐색 범위
+    description: str                             # 한국어 설명
+```
+
+> `BlockDefinition`은 라이브러리 정의용 — `models.py`의 `PipelineBlock`(파이프라인 구성용)과 별개
+
+**BLOCK_REGISTRY 블록 목록 (26개)**:
+
+| 카테고리 | 블록 이름 |
+|---|---|
+| color_space (5) | grayscale, hsv_s, hsv_v, lab_l, ycrcb_cr |
+| denoise (6) | gaussian_fine, gaussian_mid, bilateral, median, nlmeans, clahe |
+| threshold (4) | otsu, adaptive_mean, adaptive_gauss, dynamic_threshold |
+| morphology (7) | erosion, dilation, opening, closing, tophat, blackhat, morph_gradient |
+| edge (4) | canny, sobel, laplacian, scharr |
+
+> 태스크 명세의 "28 total"은 오기 — 실제 나열된 블록 합산 결과 26개
+
+**get_matching_blocks 동작**:
+- `diagnosis: ImageDiagnosis`와 선택적 `category: str | None` 인자 수신
+- `BLOCK_REGISTRY` 전체 순회하며 `block.when(diagnosis)` 평가
+- `True`인 블록만 반환; `category` 지정 시 해당 카테고리로 추가 필터링
+
+**조건 매칭 로직 요약**:
+
+| 시나리오 | 매칭 블록 (예시) |
+|---|---|
+| noise_level > 5 | gaussian_fine |
+| noise_level > 15 | gaussian_mid |
+| noise_level > 10 + edge_sharpness > 0.1 | bilateral |
+| noise_level > 20 | median |
+| noise_level > 30 | nlmeans |
+| lighting_uniformity > 0.25 | clahe |
+| lighting_uniformity > 0.2 | adaptive_mean |
+| lighting_uniformity > 0.2 + noise_level > 10 | adaptive_gauss |
+| lighting_uniformity > 0.3 | lab_l, tophat, blackhat |
+| contrast > 0.15 | otsu |
+| contrast < 0.15 | dynamic_threshold |
+| color_discriminability > 0.3 | hsv_s |
+| color_discriminability > 0.2 | hsv_v |
+| color_discriminability > 0.4 + dominant_channel_ratio < 0.5 | ycrcb_cr |
+| edge_sharpness > 0.05 | canny, laplacian |
+| edge_sharpness > 0.03 | sobel, scharr |
+| noise_level < 15 + edge_sharpness > 0.05 | laplacian |
+| edge_density > 0.1 | erosion, morph_gradient |
+| edge_density > 0.05 | dilation, closing |
+| noise_level > 10 | opening |
+| 항상 | grayscale |
+
+**테스트 커버리지**:
+
+| 카테고리 | 테스트 수 |
+|---|---|
+| BlockDefinition 구조 | 10 |
+| 레지스트리 블록 수 | 7 |
+| get_block 조회 | 30 |
+| 고노이즈 매칭 | 10 |
+| 조명 불균일 매칭 | 9 |
+| 대비 매칭 | 4 |
+| 색상 구분성 매칭 | 7 |
+| 엣지 선명도 매칭 | 7 |
+| 모폴로지 조건 | 6 |
+| 카테고리 필터 | 6 |
+| 기본 진단 최소 매칭 | 5 |
+| **합계** | **102** |
+
+**pytest 결과**:
+- 신규 테스트: 102개 추가
+- 전체: 744 passed (642 → 744), 0 failed
+- 회귀 없음
+
+**이슈 및 해결**:
+1. **태스크 명세 블록 수 불일치**: 명세에 "28 total"이라 명시됐으나 카테고리별 블록 나열 합계는 5+6+4+7+4=26. 실제 나열된 블록을 기준으로 구현하고 테스트도 26으로 수정.
+2. **lighting_uniformity 해석**: `image_analysis_agent.py` 확인 결과 이 값은 coefficient of variation(CV)으로, 값이 클수록 조명이 불균일함. 조건식 `> 0.2~0.3`은 "불균일 조명일 때 해당 블록 적용"을 의미 — PLAN.md 명칭과 실제 코드 필드 간 혼동 없이 정확히 적용.
+3. **BlockDefinition 데이터클래스 callable 필드**: `when: Callable[[ImageDiagnosis], bool]` 필드를 가진 dataclass는 `__eq__` 비교 시 함수 동일성(identity)으로 비교되므로 문제 없음. 람다 늦은 바인딩 위험도 리스트 컴프리헨션이 아닌 명시적 구성으로 회피.
 
 ---
 
