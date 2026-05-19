@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 21 (완료)
+## 현재 진행 단계: Step 22 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -30,7 +30,7 @@
 ## Phase 4: 파이프라인 설계
 - [x] Step 20: Pipeline Block Library
 - [x] Step 21: Pipeline Composer
-- [ ] Step 22: Parameter Searcher + ProcessingQualityEvaluator
+- [x] Step 22: Parameter Searcher + ProcessingQualityEvaluator
 - [ ] Step 23: Algorithm Selector (결정 트리)
 - [ ] Step 24: Inspection Plan Agent
 - [ ] Step 25: Vision Judge 기반 파이프라인 선정 루프
@@ -67,6 +67,120 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 22 완료 내역
+
+### 생성된 파일
+- `agents/processing_quality_evaluator.py` (신규)
+- `agents/parameter_searcher.py` (신규)
+- `tests/test_parameter_searcher.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### ProcessingQualityEvaluator 인터페이스
+
+```python
+class ProcessingQualityEvaluator:
+    def evaluate(self, original: np.ndarray, processed: np.ndarray, purpose: str = "") -> QualityScore
+
+@dataclass
+class QualityScore:
+    contrast_score: float      # 0.0–1.0
+    noise_score: float         # 0.0–1.0
+    edge_score: float          # 0.0–1.0
+    overall_score: float       # 0.0–1.0
+    details: dict              # raw metrics
+```
+
+### 스코어링 로직
+| 항목 | 방법 | 가중치 |
+|------|------|--------|
+| contrast_score | `min(1, proc_std / max(orig_std, 1))` | 0.3 |
+| noise_score | `min(1, orig_lap_var / max(proc_lap_var, 1))` | 0.3 |
+| edge_score | `min(1, proc_canny_count / max(orig_canny_count, 1))` | 0.4 |
+| overall_score | 가중 합계, [0,1] 클램프 | — |
+
+- 퇴화 이미지(std < 1.0): overall_score = 0.0
+- BGR(3D) / 그레이스케일(2D) 입력 모두 지원
+
+### ParameterSearcher 인터페이스
+
+```python
+class ParameterSearcher(BaseAgent):
+    def __init__(self, directive: str = "") -> None
+    async def run(self, pipeline: ProcessingPipeline, image: np.ndarray,
+                  roi: Optional[dict] = None, **kwargs) -> AgentResult
+```
+
+### AgentResult data 필드
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `optimized_pipeline` | `ProcessingPipeline` | 최적 파라미터 적용된 파이프라인 |
+| `quality_score` | `dict` | QualityScore asdict |
+| `search_summary` | `dict` | `{total_combinations, evaluated, best_score}` |
+
+### Block 실행 매핑 요약
+| 카테고리 | block_id | OpenCV 함수 |
+|----------|----------|-------------|
+| color_space | grayscale / hsv_s / hsv_v / lab_l / ycrcb_cr | cvtColor + split |
+| denoise | gaussian_fine/mid | GaussianBlur |
+| denoise | bilateral | bilateralFilter |
+| denoise | median | medianBlur |
+| denoise | nlmeans | fastNlMeansDenoising |
+| denoise | clahe | createCLAHE().apply() |
+| threshold | otsu | threshold OTSU |
+| threshold | adaptive_mean/gauss | adaptiveThreshold |
+| threshold | dynamic_threshold | mean+offset → threshold |
+| morphology | erosion/dilation | erode/dilate |
+| morphology | opening/closing/tophat/blackhat/morph_gradient | morphologyEx |
+| edge | canny | Canny |
+| edge | sobel/laplacian/scharr | Sobel/Laplacian/Scharr → uint8 |
+
+### 에러 처리
+| 조건 | status | error_message |
+|------|--------|---------------|
+| blocks 없음 | error | "Pipeline has no blocks" |
+| 이미지 < 3×3 | error | "Image too small for parameter search" |
+| OpenCV 예외 | 해당 조합 스킵, 로그 | — |
+| 모든 조합 실패 | error | "All parameter combinations failed" |
+| block_id 미등록 | block.params 폴백 + 실행 패스스루 | — |
+
+### Directive 처리
+| directive 포함 문자열 | max_evals |
+|----------------------|-----------|
+| "fast" (대소문자 무관) | 30 |
+| "thorough" | 300 |
+| 기본 | 100 |
+
+- 조합 수 > max_evals: random.sample(seed=42)으로 무작위 샘플링
+
+### 테스트 커버리지
+| 카테고리 | 테스트 수 |
+|----------|----------|
+| EvaluatorInstantiation | 2 |
+| QualityScoreStructure | 7 |
+| QualityScoreRange | 5 |
+| DegenerateDetection | 3 |
+| ScoringLogic | 5 |
+| SearcherInstantiation | 4 |
+| AgentResultStructure | 8 |
+| SearchSummary | 5 |
+| PipelineOptimization | 5 |
+| ROIHandling | 2 |
+| ErrorHandling | 4 |
+| DirectiveHandling | 3 |
+| RegistryFallback | 1 |
+| **합계** | **54** |
+
+### pytest 결과
+- 신규 테스트: 54개 (모두 통과)
+- 전체 테스트: 852개 (regressions 없음)
+- 실행 시간: ~62초
+
+### 특이사항 없음
+모든 OpenCV 연산이 gray(2D)/BGR(3D) 입력을 정상 처리.
+파라미터 리스트를 itertools.product로 조합 후 최고 overall_score 조합 선택.
 
 ---
 
