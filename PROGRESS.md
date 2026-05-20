@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 24 (완료)
+## 현재 진행 단계: Step 25 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -33,7 +33,7 @@
 - [x] Step 22: Parameter Searcher + ProcessingQualityEvaluator
 - [x] Step 23: Algorithm Selector (결정 트리)
 - [x] Step 24: Inspection Plan Agent
-- [ ] Step 25: Vision Judge 기반 파이프라인 선정 루프
+- [x] Step 25: Vision Judge 기반 파이프라인 선정 루프 (PipelineSelector)
 - [ ] Step 26: Test Agent (Inspection, 항목별)
 - [ ] Step 27: Test Agent (Align)
 
@@ -67,6 +67,108 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 25 완료 내역
+
+### 생성된 파일
+- `agents/pipeline_selection.py` (신규)
+- `tests/test_pipeline_selection.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### PipelineSelector 인터페이스
+
+```python
+class PipelineSelector(BaseAgent):
+    def __init__(
+        self,
+        parameter_searcher: ParameterSearcher,
+        vision_judge: VisionJudgeAgent,
+        directive: str = "",
+    ) -> None
+
+    async def run(
+        self,
+        pipelines: list[ProcessingPipeline],
+        image: np.ndarray,
+        purpose: str,
+        roi: dict | None = None,
+        directive: str | None = None,
+        **kwargs,
+    ) -> AgentResult
+
+    def _execute_pipeline(
+        self,
+        pipeline: ProcessingPipeline,
+        image: np.ndarray,
+        roi: dict | None,
+    ) -> np.ndarray
+```
+
+- name: `"pipeline_selection"`
+- ParameterSearcher (파라미터 최적화) + VisionJudgeAgent (품질 평가)를 조합하여 최적 파이프라인 선정
+- `_apply_block`을 `parameter_searcher.py`에서 import하여 블록 실행 로직 재사용
+
+### AgentResult data 필드 (성공 시)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `selected_pipeline` | `ProcessingPipeline` | 파라미터 최적화된 최고 점수 파이프라인 |
+| `selected_index` | `int` | 입력 목록 기준 0-based 인덱스 |
+| `combined_score` | `float` | 최종 복합 점수 |
+| `quality_score` | `dict` | ParameterSearcher의 QualityScore (asdict) |
+| `judgement` | `dict` | VisionJudgeAgent의 JudgementResult (asdict) |
+| `all_candidates` | `list[dict]` | 후보별 평가 요약 (pipeline_id, combined_score, quality_score, judgement_score, status) |
+
+### 점수 계산 공식
+```
+judgement_overall = (visibility_score + separability_score + measurability_score) / 3
+combined_score    = 0.4 × quality_overall + 0.6 × judgement_overall
+```
+- `judgement_overall`은 VisionJudgeAgent의 `overall_score`를 사용하지 않고, 세 점수의 산술 평균으로 직접 계산
+
+### ROI 처리
+- `_execute_pipeline`은 `{"x1": ..., "y1": ..., "x2": ..., "y2": ...}` 형식으로 크롭
+- 동일 `roi` dict를 ParameterSearcher에도 전달
+
+### 에러 처리
+| 조건 | status | error_message |
+|------|--------|---------------|
+| `pipelines`가 빈 리스트 | `"error"` | `"No candidate pipelines provided"` |
+| 이미지 크기 < 3×3 | `"error"` | `"Image too small for pipeline selection"` |
+| `purpose`가 빈 문자열 | `"error"` | `"Purpose is required for pipeline selection"` |
+| 단일 후보 실패 (searcher/judge 오류 또는 예외) | `"skipped"` (all_candidates 내) | — |
+| 모든 후보 실패 | `"error"` | `"All candidate pipelines failed evaluation"` |
+
+### Directive 처리
+- 생성자 directive: 기본값
+- `run(directive=...)`: 생성자 directive를 override
+- `run(directive=None)`: 생성자 directive로 fallback
+- 최종 directive를 ParameterSearcher와 VisionJudgeAgent 모두에 전달
+
+### 테스트 커버리지
+| 카테고리 | 테스트 수 |
+|----------|----------|
+| Instantiation | 6 |
+| AgentResult structure | 14 |
+| Score weighting | 4 |
+| Pipeline selection logic | 10 |
+| Candidate failure handling | 7 |
+| Error handling | 7 |
+| ROI handling | 4 |
+| Pipeline execution | 4 |
+| Directive handling | 5 |
+| **합계** | **62** |
+
+### pytest 결과
+- 신규 테스트: 62개 (모두 통과)
+- 전체 테스트: 1008개 (946 → 1008, regressions 없음, 5 skipped)
+- 실행 시간: ~5초
+
+### 특이사항
+- `_apply_block`을 `parameter_searcher.py`에서 직접 import (`from agents.parameter_searcher import _apply_block`) — 블록 실행 로직 중복 없이 재사용
+- ParameterSearcher와 VisionJudgeAgent 모두 mock 처리하여 외부 의존성 완전 격리
+- 예외 발생 시 해당 후보를 `"skipped"`로 기록하고 계속 진행 (try/except로 방어)
 
 ---
 
