@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 26 (완료)
+## 현재 진행 단계: Step 27 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -36,7 +36,7 @@
 - [x] Step 25: Vision Judge 기반 파이프라인 선정 루프 (PipelineSelector)
 - [x] Step 26: Test Agent (Inspection, 항목별)
 
-- [ ] Step 27: Test Agent (Align)
+- [x] Step 27: Test Agent (Align)
 
 ## Phase 5: Blueprint + 평가 루프
 - [ ] Step 28: Blueprint Agent (SVG 다이어그램)
@@ -68,6 +68,119 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 27 완료 내역
+
+### 생성된 파일
+- `agents/test_agent_align.py` (신규)
+- `tests/test_test_agent_align.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### TestAgentAlign 인터페이스
+
+**생성자**
+```python
+TestAgentAlign(directive: str = "")
+```
+
+**run 시그니처**
+```python
+async def run(
+    self,
+    pipeline: ProcessingPipeline,
+    ok_images: list[np.ndarray],
+    roi: dict | None = None,        # {"x1": int, "y1": int, "x2": int, "y2": int}
+    error_threshold: float = 5.0,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `per_image_results` | `list[dict]` | 이미지별 정렬 결과 |
+| `overall_success_rate` | `float` | 성공 이미지 비율 |
+| `overall_mean_error` | `float` | 평균 유클리드 오차 (px) |
+| `overall_max_error` | `float` | 최대 오차 (px) |
+| `overall_passed` | `bool` | success_rate ≥ 0.8 |
+| `method_stats` | `dict` | 각 방법 사용 횟수 {"template": N, "edge": N, "caliper": N} |
+| `error_threshold` | `float` | directive 보정 후 실제 임계값 |
+| `total_images` | `int` | 처리한 이미지 수 |
+
+### per_image_result 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `image_index` | `int` | 0-based 인덱스 |
+| `detected_x` | `float` | 검출된 X 좌표 (전체 이미지 공간) |
+| `detected_y` | `float` | 검출된 Y 좌표 (전체 이미지 공간) |
+| `ground_truth_x` | `float` | ROI 중심 X ((x1+x2)/2) |
+| `ground_truth_y` | `float` | ROI 중심 Y ((y1+y2)/2) |
+| `error_px` | `float` | 유클리드 거리 오차 |
+| `method_used` | `str` | "template" / "edge" / "caliper" |
+| `match_score` | `float \| None` | 템플릿 매칭 점수 (비-template은 None) |
+| `success` | `bool` | error_px < threshold |
+
+### Fallback 체인 동작
+
+1. **Template Matching**: `cv2.matchTemplate(TM_CCOEFF_NORMED)` — 첫 번째 OK 이미지 ROI 중심 50% 패치를 템플릿으로 사용. score ≥ 0.5이면 채택.
+2. **Edge Detection**: Canny → HoughLinesP (라인 ≥ 2개 시 엔드포인트 COM, 미만 시 Canny 픽셀 COM). edge_pixel_count ≥ 2이면 채택.
+3. **Caliper** (최종 fallback): 중간 행/열 프로파일에서 최대 기울기 2개 피크 위치의 중점을 검출 좌표로 사용.
+
+### Error handling
+
+| 조건 | status | error_message |
+|------|--------|---------------|
+| ok_images 비어있음 | `"error"` | `"No OK images provided"` |
+| roi가 None | `"error"` | `"ROI is required for align mode"` |
+| ROI 너무 작음 (w<3 or h<3) | `"error"` | `"ROI too small for alignment"` |
+
+### Directive handling
+
+| directive | 동작 |
+|-----------|------|
+| `"strict"` | error_threshold × 0.5 (더 엄격) |
+| `"lenient"` | error_threshold × 2.0 (더 관대) |
+| 기타 / 빈 문자열 | threshold 변경 없음 |
+
+- `run(directive=...)` 호출 시 → run 인자 우선
+- `run(directive=None)` → 생성자 directive 사용
+- 좌표는 전체 이미지 공간 (ROI offset 가산 후 ROI 경계로 클리핑)
+
+### 테스트 커버리지
+
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| Instantiation | 5 |
+| Error handling | 6 |
+| Result structure | 11 |
+| Per-image result fields | 3 |
+| Ground truth | 2 |
+| Coordinate space | 2 |
+| Error calculation | 6 |
+| Method stats | 2 |
+| Template method | 3 |
+| Directive handling | 6 |
+| Pipeline preprocessing | 3 |
+| Single image | 2 |
+| Alignment accuracy | 2 |
+| **합계** | **53** |
+
+### pytest 결과
+
+- 신규 테스트: 53 passed
+- 전체 테스트: 1159 passed (기존 1106 + 신규 53)
+- 실행 시간: 59.16s
+- 경고: 기존과 동일 (PytestCollectionWarning — TestAgentInspection 클래스명 충돌)
+
+### 특이사항
+- `_build_template`은 ROI 크기에 따라 center-50% 패치 추출 실패 시 top-left 1/3 패치로 자동 fallback
+- 좌표 공간 변환: ROI 내부 검출 좌표 + (x1, y1) → 전체 이미지 공간으로 변환 후 ROI 경계 클리핑
+- `_detect_template` 재사용 불가 (template 크기는 proc_roi별 고정) → 첫 번째 이미지 기준 단일 template 사용
 
 ---
 
