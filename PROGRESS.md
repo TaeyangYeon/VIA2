@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 25 (완료)
+## 현재 진행 단계: Step 26 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -34,7 +34,8 @@
 - [x] Step 23: Algorithm Selector (결정 트리)
 - [x] Step 24: Inspection Plan Agent
 - [x] Step 25: Vision Judge 기반 파이프라인 선정 루프 (PipelineSelector)
-- [ ] Step 26: Test Agent (Inspection, 항목별)
+- [x] Step 26: Test Agent (Inspection, 항목별)
+
 - [ ] Step 27: Test Agent (Align)
 
 ## Phase 5: Blueprint + 평가 루프
@@ -67,6 +68,146 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 26 완료 내역
+
+### 생성된 파일
+- `agents/test_agent_inspection.py` (신규)
+- `tests/test_test_agent_inspection.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### TestAgentInspection 인터페이스
+
+**Constructor:**
+```python
+TestAgentInspection(directive: str = "")
+```
+
+**run signature:**
+```python
+async def run(
+    self,
+    inspection_plan: InspectionPlan,
+    pipeline: ProcessingPipeline,
+    ok_images: list[np.ndarray],
+    ng_images: list[np.ndarray],
+    roi: dict | None = None,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `item_results` | `list[dict]` | 항목별 결과 (execution_order 순) |
+| `overall_accuracy` | `float` | 비스킵 항목들의 accuracy 평균 |
+| `overall_passed` | `bool` | 모든 비스킵 항목이 통과했는지 여부 |
+| `execution_order` | `list[int]` | 위상정렬된 item_id 순서 |
+| `total_items` | `int` | 전체 항목 수 |
+| `passed_items` | `int` | 통과한 항목 수 |
+| `skipped_items` | `int` | 스킵된 항목 수 |
+| `failed_items` | `int` | 실패한 항목 수 |
+
+**item_result 필드:**
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `item_id` | `int` | 항목 ID |
+| `name` | `str` | 항목명 |
+| `category` | `str` | 검사 카테고리 |
+| `accuracy` | `float` | (TP+TN)/(n_ok+n_ng) |
+| `fp_rate` | `float` | FP/n_ok — OK 이미지 오검출률 |
+| `fn_rate` | `float` | FN/n_ng — NG 이미지 미검출률 |
+| `passed` | `bool` | success_criteria 충족 여부 |
+| `skipped` | `bool` | 의존 항목 실패로 스킵 여부 |
+| `details` | `dict` | 카테고리별 세부 정보 |
+
+### Topological Sort 동작 설명
+
+Kahn's Algorithm 사용:
+1. `depends_on`으로 인접 리스트 + 진입차수(in_degree) 구성
+2. 진입차수 0인 노드부터 BFS 순서로 실행 순서 결정
+3. **순환 의존성**: 정렬 후 항목 수가 맞지 않으면 `ValueError` → `AgentResult(status="error")`
+4. **누락된 의존성**: `depends_on`에 존재하지 않는 item_id가 있으면 무시하고 계속 진행
+5. **연쇄 스킵**: 스킵된 항목을 의존하는 항목도 연쇄적으로 스킵 (failed_ids + skipped_ids 모두 추적)
+
+### Per-item Metric 계산 공식
+
+```
+accuracy  = (TP + TN) / (n_ok + n_ng)
+fp_rate   = FP / n_ok         # OK 이미지 중 잘못 defect 판정된 비율
+fn_rate   = FN / n_ng         # NG 이미지 중 잘못 OK 판정된 비율
+```
+
+- OK 이미지 + defect NOT detected = TN (True Negative)
+- OK 이미지 + defect detected = FP (False Positive)
+- NG 이미지 + defect detected = TP (True Positive)
+- NG 이미지 + defect NOT detected = FN (False Negative)
+
+### Error Handling
+
+| 조건 | status | error_message |
+|------|--------|---------------|
+| `inspection_plan.items` 비어있음 | `"error"` | "Inspection plan has no items" |
+| `ok_images` 비어있음 | `"error"` | "No OK images provided" |
+| `ng_images` 비어있음 | `"error"` | "No NG images provided" |
+| 순환 의존성 감지 | `"error"` | "Circular dependency detected in inspection plan" |
+
+### Directive Handling
+
+- 생성자 directive를 기본값으로 사용
+- `run(directive="...")` 호출 시 해당 값으로 override
+- `run(directive=None)` 호출 시 생성자 directive fallback
+- `"strict"` 포함 시: `min_accuracy` 기준 +0.1 (더 엄격)
+- `"lenient"` 포함 시: `min_accuracy` 기준 -0.1 (더 완화)
+
+### 카테고리별 검사 로직
+
+| 카테고리 | 검사 방식 | details 키 |
+|----------|-----------|------------|
+| BLOB / COUNT | OTSU threshold + findContours로 blob 수 계산, OK baseline과 비교 | `blob_counts`, `ok_blob_counts`, `ng_blob_counts`, `baseline`, `threshold` |
+| COLOR_FILTER | R-B 채널 차이로 색상 분포 측정, OK baseline과 비교 | `channel_scores`, `ok_channel_scores`, `ng_channel_scores`, `baseline` |
+| EDGE_DETECTION | Canny 엣지 밀도 계산, OK baseline과 비교 | `edge_scores`, `ok_edge_scores`, `ng_edge_scores`, `baseline` |
+| TEMPLATE_MATCHING | 첫 OK 이미지 중심 패치를 template으로 matchTemplate, OK mean의 90% 미만이면 defect | `match_scores`, `ok_match_scores`, `ng_match_scores`, `threshold` |
+| GEOMETRIC | 최대 contour의 원형도(circularity) 계산, OK baseline과 비교 | `geometric_scores`, `ok_geometric_scores`, `ng_geometric_scores`, `baseline` |
+
+### Test Coverage
+
+| 테스트 클래스 | 테스트 수 | 검증 항목 |
+|---------------|-----------|-----------|
+| TestInstantiation | 5 | 생성, 상속, name, directive |
+| TestResultStructure | 11 | AgentResult 필드, 실행시간 |
+| TestItemResultFields | 15 | item_result 각 필드 타입/값 |
+| TestTopologicalSort | 6 | 순서, 독립 항목, 순환, 누락 의존성, fan-in |
+| TestDependencySkip | 4 | 스킵 전파, 카운트, 비의존 항목, 스킵 accuracy=0 |
+| TestMetricCalculation | 5 | 완벽 분류 accuracy/fp/fn, passed/failed |
+| TestBlobCategory | 5 | details 키, ok<ng blob counts, COUNT 서브카테고리 |
+| TestEdgeDetectionCategory | 4 | 실행, details, edge 밀도 방향성, accuracy |
+| TestColorFilterCategory | 3 | 실행, details, blue vs red 구분 |
+| TestTemplateMatchingCategory | 3 | 실행, details, ok>ng match score |
+| TestGeometricCategory | 4 | 실행, details, 원형도 방향성, accuracy |
+| TestROIHandling | 3 | ROI 적용, None ROI, 크롭 효과 |
+| TestPipelineExecution | 3 | 빈 파이프라인, 다중 블록, BGR 입력 |
+| TestDirectiveHandling | 4 | override, fallback, strict, lenient |
+| TestErrorHandling | 7 | 빈 plan, 빈 ok/ng, 오류 메시지, 실행시간 |
+| TestOverallMetrics | 11 | 카운트, 평균, 합계, 타입 검증 |
+
+### pytest 결과
+
+- **신규 테스트**: 93개 (tests/test_test_agent_inspection.py)
+- **전체 테스트**: 1106개 통과 (기존 1008개 + 신규 98개 포함)
+- **실행 시간**: 90.25s (1:30)
+- **회귀 없음**: 기존 전체 테스트 통과 유지
+
+### 특이사항
+
+- `TestAgentInspection` 클래스명이 pytest 수집 대상으로 오인될 수 있어 `PytestCollectionWarning` 발생하나, `__init__` 생성자로 인해 수집 불가로 처리됨. 기능 및 테스트에 영향 없음.
+- 연쇄 스킵(cascade skip): 실패한 항목뿐 아니라 스킵된 항목도 `skipped_ids`로 추적하여, 3단계 이상 의존 관계에서도 올바르게 연쇄 스킵 적용.
+- BLOB에서 균일한(std < 1) 이미지는 blob 수 0으로 처리하여 OTSU가 불안정한 flat histogram에서 오동작하는 것을 방지.
 
 ---
 
