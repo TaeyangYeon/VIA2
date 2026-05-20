@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 23 (완료)
+## 현재 진행 단계: Step 24 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -32,7 +32,7 @@
 - [x] Step 21: Pipeline Composer
 - [x] Step 22: Parameter Searcher + ProcessingQualityEvaluator
 - [x] Step 23: Algorithm Selector (결정 트리)
-- [ ] Step 24: Inspection Plan Agent
+- [x] Step 24: Inspection Plan Agent
 - [ ] Step 25: Vision Judge 기반 파이프라인 선정 루프
 - [ ] Step 26: Test Agent (Inspection, 항목별)
 - [ ] Step 27: Test Agent (Align)
@@ -67,6 +67,117 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 24 완료 내역
+
+### 생성된 파일
+- `agents/inspection_plan_agent.py` (신규)
+- `agents/prompts/inspection_plan_prompt.py` (신규)
+- `tests/test_inspection_plan.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### InspectionPlanAgent 인터페이스
+
+```python
+class InspectionPlanAgent(BaseAgent):
+    def __init__(
+        self,
+        adapter: BaseAIAdapter,
+        model: str = "qwen2.5-coder:7b",
+        directive: str = "",
+    ) -> None
+    async def run(
+        self,
+        purpose: str,
+        scene_context: SceneContext | None,
+        algorithm_category: AlgorithmCategory | None,
+        directive: str | None = None,
+        **kwargs,
+    ) -> AgentResult
+```
+
+- name: `"inspection_plan"`
+- Qwen2.5-Coder를 통해 LLM이 검사 항목을 자유롭게 설계 (고정 템플릿 없음)
+- JSON 배열을 파싱하여 `InspectionItem` 리스트 → `InspectionPlan` 구성
+
+### Prompt Builder (`build_inspection_plan_prompt`)
+
+```python
+def build_inspection_plan_prompt(
+    purpose: str,
+    scene_context: SceneContext,
+    algorithm_category: AlgorithmCategory,
+    directive: str | None,
+) -> tuple[str, str]:
+```
+
+- system_prompt: JSON 배열 스키마 명세 (item_id, name, category, depends_on, safety_role, success_criteria)
+- user_prompt: purpose + algorithm_category + scene 진단 지표 (surface_type, contrast, edge_density 등) + 선택적 directive
+- directive가 없으면 prompt에 "None" 리터럴 미포함
+
+### AgentResult data 필드 (성공 시)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `plan` | `dict` | `InspectionPlan.asdict()` — items 리스트 + inspection_purpose + total_items |
+| `raw_response` | `str` | LLM 원문 출력 |
+
+### InspectionItem 필드 매핑
+| LLM JSON 필드 | InspectionItem 필드 | 타입 | 비고 |
+|--------------|---------------------|------|------|
+| `item_id` | `item_id` | `int` | 1부터 시작 |
+| `name` | `name` | `str` | 검사 항목 이름 |
+| `category` | `category` | `str` | AlgorithmCategory value 중 하나 |
+| `depends_on` | `depends_on` | `list[int]` | 선행 item_id 목록 |
+| `safety_role` | `safety_role` | `bool` | 비bool 값은 bool()로 강제 변환 |
+| `success_criteria` | `success_criteria` | `dict` | 문자열이면 {"metric": str, "threshold": 0}으로 래핑 |
+
+### 에러 처리
+| 조건 | status | error_message |
+|------|--------|---------------|
+| `purpose`가 빈 문자열 | `"error"` | `"Inspection purpose is required"` |
+| `scene_context is None` | `"error"` | `"SceneContext is required"` |
+| `algorithm_category is None` | `"error"` | `"AlgorithmCategory is required"` |
+| 어댑터 예외 | `"error"` | 어댑터 예외 메시지 |
+| JSON 파싱 실패 | `"error"` | `"Failed to parse inspection plan from LLM response"` |
+| LLM이 빈 배열 반환 | `"error"` | `"LLM returned empty inspection plan"` |
+
+### depends_on 검증
+- 참조된 item_id가 계획 내에 없으면 해당 항목만 제거, 경고 로그 기록 후 계속 진행
+- 유효한 참조는 그대로 보존
+
+### Directive 처리
+- 생성자 directive: 기본값으로 사용
+- `run(directive=...)`: 생성자 directive를 override
+- `run(directive=None)`: 생성자 directive로 fallback
+- directive가 있으면 user_prompt 끝에 `"Additional directive: {directive}"` 추가
+
+### 테스트 커버리지
+| 카테고리 | 테스트 수 |
+|----------|----------|
+| Instantiation | 6 |
+| AgentResult structure | 6 |
+| InspectionPlan/Item fields | 9 |
+| depends_on validation | 4 |
+| Different purposes | 3 |
+| Error handling | 13 |
+| Directive handling | 4 |
+| AlgorithmCategory in prompt | 4 |
+| JSON parsing robustness | 2 |
+| Prompt builder | 9 |
+| **합계** | **64** |
+
+### pytest 결과
+- 신규 테스트: 64개 (모두 통과)
+- 전체 테스트: 946개 (887 → 946, regressions 없음, 5 skipped)
+- 실행 시간: ~6초
+
+### 특이사항
+- `InspectionItem.safety_role`은 `bool` 타입 (기존 모델 기준); LLM에서 비bool 반환 시 `bool()` 강제 변환
+- `InspectionItem.success_criteria`는 `dict` 타입; LLM에서 문자열 반환 시 자동 래핑
+- `_strip_fences` 패턴을 SpecAgent와 동일하게 적용하여 markdown fence 처리
+- 타공(hole/perforation) 결함 유형은 system_prompt에 misdetection-prevention 항목 자동 포함 지시 포함
 
 ---
 
