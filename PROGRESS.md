@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 28 (완료)
+## 현재 진행 단계: Step 29 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -40,7 +40,7 @@
 
 ## Phase 5: Blueprint + 평가 루프
 - [x] Step 28: Blueprint Agent (SVG 다이어그램)
-- [ ] Step 29: 파라미터 시트 생성기
+- [x] Step 29: 파라미터 시트 생성기
 - [ ] Step 30: Evaluation Agent
 - [ ] Step 31: Feedback Controller
 - [ ] Step 32: Decision Agent (InternVL + DINOv2 통계)
@@ -180,6 +180,121 @@ async def run(
 - BlueprintEdge 실제 필드명은 `source_id`/`target_id` (plan 명세의 `source`/`target`과 다름) — 실제 models.py 확인으로 수정
 - Blueprint 모델에 `blueprint_id`, `title` 없음 — `svg_content`, `algorithm_description`, `parameter_sheet` 사용
 - LLM 실패 시 Blueprint + SVG는 정상 생성, description만 한국어 fallback으로 대체 (status는 "success" 유지)
+
+---
+
+## Step 29 완료 내역
+
+### 생성된 파일
+- `agents/parameter_sheet.py` (신규)
+- `tests/test_parameter_sheet.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### 데이터 모델
+
+**ParameterEntry** (`agents/parameter_sheet.py`)
+```python
+@dataclass
+class ParameterEntry:
+    name: str
+    value: Any
+    mathematical_description: str
+    unit: Optional[str] = None
+```
+
+**NodeParameterSheet** (`agents/parameter_sheet.py`)
+```python
+@dataclass
+class NodeParameterSheet:
+    node_id: str
+    node_name: str
+    node_type: str                 # preprocessing / feature / inspection / decision
+    parameters: list[ParameterEntry]
+    algorithm_summary: str         # 1줄 한국어 설명
+
+    def to_dict(self) -> dict: ...  # JSON 직렬화 (tuple → list 자동 변환)
+```
+
+### ParameterSheetGenerator 인터페이스
+
+```python
+class ParameterSheetGenerator:
+    def generate(
+        self,
+        blueprint: Blueprint,
+        pipeline: ProcessingPipeline,
+        inspection_plan: InspectionPlan,
+    ) -> list[NodeParameterSheet]
+```
+
+### 노드 타입별 처리 전략
+
+| node_type | 처리 방식 |
+|-----------|----------|
+| `preprocessing` | node.label(block_type) → `_PREPROCESSING_SUMMARIES` 조회 + `_make_preprocessing_entries()` |
+| `feature` | node.label(block_type) → `_FEATURE_SUMMARIES` 조회 + `_make_feature_entries()` |
+| `inspection` | node_id에서 item_id 추출 → `item_map[item_id]` 조회 → success_criteria → ParameterEntry |
+| `decision` | inspection 노드 수 카운트 → "전체 N개 검사 항목 … 합격/불합격 판정" |
+
+### 수학적 설명 매핑 (주요 예시)
+
+| block_type / param | mathematical_description |
+|--------------------|--------------------------|
+| `grayscale` (summary) | "RGB→그레이스케일 단일 채널 변환" |
+| `gaussian_fine` kernel_size=5 | "5×5 가우시안 커널" |
+| `gaussian_fine` sigma=1.0 | "σ=1.0 가우시안 분포" |
+| `bilateral` d=7 | "필터 직경 7px" |
+| `median` kernel_size=5 | "5×5 중앙값 필터" |
+| `clahe` clip_limit=2.0 | "CLAHE 대비 제한 계수 2.0" |
+| `clahe` tile_grid_size=(8,8) | "타일 격자 8×8" |
+| `otsu` (summary) | "오츠 알고리즘에 의한 자동 임계값 이진화" |
+| `adaptive_mean` block_size=11 | "11×11 로컬 영역 적응형 임계값" |
+| `adaptive_mean` c=5 | "임계값 보정 상수 5" |
+| `erosion` kernel_size=3 | "3×3 침식 커널" |
+| `erosion` iterations=2 | "2회 반복 형태학적 침식" |
+| `canny` low_threshold=50 | "하한 임계값 50" |
+| `canny` high_threshold=150 | "상한 임계값 150" |
+| `sobel` ksize=3 | "3×3 소벨 미분 필터" |
+| `laplacian` ksize=5 | "5×5 라플라시안 이차 미분 필터" |
+| `scharr` (summary) | "샤르 고정밀 방향성 그래디언트 검출" |
+| inspection (blob) | "{name} — 블랍 분석 기반 검사" |
+| inspection (safety_role=True) | "… [안전 항목]" 접미 |
+| decision | "전체 N개 검사 항목의 결과를 종합하여 합격/불합격 판정" |
+
+### 테스트 커버리지
+
+| 카테고리 | 테스트 수 |
+|---------|----------|
+| ParameterEntry dataclass | 5 |
+| NodeParameterSheet dataclass + to_dict() | 6 |
+| Generator 기본 인터페이스 | 6 |
+| Preprocessing — color space (grayscale, hsv_s/v, lab_l, ycrcb_cr) | 5 |
+| Preprocessing — gaussian_fine/mid | 4 |
+| Preprocessing — bilateral | 2 |
+| Preprocessing — median | 1 |
+| Preprocessing — clahe | 2 |
+| Preprocessing — nlmeans | 1 |
+| Feature — threshold (otsu, adaptive_mean/gauss, dynamic) | 7 |
+| Feature — morphology (erosion, dilation, opening, closing, tophat, blackhat, morph_gradient) | 8 |
+| Feature — edge detection (canny, sobel, laplacian, scharr) | 6 |
+| Inspection nodes (type, name, summary, category, criteria, safety_role) | 7 |
+| Decision node | 3 |
+| Full pipeline integration | 3 |
+| Edge cases (unknown block, empty params, missing plan item, empty nodes) | 8 |
+| **합계** | **74** |
+
+### pytest 결과
+
+- 신규 테스트: 74 passed
+- 전체 테스트: 1305 passed (기존 1231 + 신규 74)
+- 실행 시간: 53.25s
+- 경고: 기존과 동일 (PytestCollectionWarning)
+
+### 특이사항
+- `agents/models.py` 실제 확인: `InspectionItem`에는 `algorithm_category` 없고 `category` 필드만 존재 — 명세의 필드명과 달라 실제 코드로 검증 필수
+- inspection node_id `"insp_{item_id}"` 패턴으로 item_id 역추출, 매칭 실패 시 graceful degradation ("비전 검사" fallback)
+- `tile_grid_size`가 tuple인 경우 `to_dict()` 에서 list로 변환하여 JSON 직렬화 보장
+- 순수 Python 표준 라이브러리만 사용, AI/LLM 어댑터 의존성 없음
 
 ---
 
