@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 27 (완료)
+## 현재 진행 단계: Step 28 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -39,7 +39,7 @@
 - [x] Step 27: Test Agent (Align)
 
 ## Phase 5: Blueprint + 평가 루프
-- [ ] Step 28: Blueprint Agent (SVG 다이어그램)
+- [x] Step 28: Blueprint Agent (SVG 다이어그램)
 - [ ] Step 29: 파라미터 시트 생성기
 - [ ] Step 30: Evaluation Agent
 - [ ] Step 31: Feedback Controller
@@ -68,6 +68,118 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 28 완료 내역
+
+### 생성된 파일
+- `agents/blueprint_agent.py` (신규)
+- `agents/prompts/blueprint_prompt.py` (신규)
+- `tests/test_blueprint_agent.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### BlueprintAgent 인터페이스
+
+**생성자**
+```python
+BlueprintAgent(adapter: BaseAIAdapter, model: str = "qwen2.5-coder:7b", directive: str = "") -> None
+```
+
+**run 시그니처**
+```python
+async def run(
+    self,
+    pipeline: ProcessingPipeline | None = None,
+    inspection_plan: InspectionPlan | None = None,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `blueprint` | `dict` | Blueprint dataclass를 asdict() 변환 (nodes, edges, svg_content, algorithm_description, parameter_sheet) |
+| `svg` | `str` | 완성된 SVG 다이어그램 문자열 |
+| `description` | `str` | LLM 생성 한국어 알고리즘 설명 |
+| `node_count` | `int` | 전체 노드 수 |
+| `edge_count` | `int` | 전체 엣지 수 |
+
+### 노드 타입 매핑
+
+| block_type | node_type |
+|-----------|-----------|
+| color_space, denoise, gaussian_blur, bilateral_filter, normalize, resize, grayscale 등 | `preprocessing` |
+| threshold, morphology, canny, edge, sobel, laplacian 등 나머지 블록 | `feature` |
+| 각 InspectionItem (1개씩) | `inspection` |
+| 최종 판정 (항상 1개) | `decision` |
+
+### SVG 색상 체계
+
+| node_type | fill 색상 |
+|-----------|----------|
+| preprocessing | `#4ade80` (green) |
+| feature | `#60a5fa` (blue) |
+| inspection | `#facc15` (yellow) |
+| decision | `#f87171` (red) |
+| 배경 | `#1a1a1a` |
+| 텍스트 | `#f5f5f5` |
+
+### Error handling
+
+| 조건 | status | error_message |
+|------|--------|---------------|
+| pipeline is None | `"error"` | `"Pipeline is required"` |
+| inspection_plan is None | `"error"` | `"InspectionPlan is required"` |
+| pipeline.blocks 비어있음 | `"error"` | `"Pipeline has no blocks"` |
+| inspection_plan.items 비어있음 | `"error"` | `"InspectionPlan has no items"` |
+| LLM adapter 예외 | `"success"` (graceful degradation) | `None` (fallback: "파이프라인 기반 비전 검사 알고리즘") |
+
+### Directive handling
+
+- 생성자 `directive` → 기본값
+- `run(directive=...)` → 생성자 directive 덮어씀
+- `run(directive=None)` → 생성자 directive 사용
+
+### 그래프 구조 (결정적 생성)
+
+엣지 생성 규칙:
+1. preprocessing 노드 간 순차 연결
+2. feature 노드 간 순차 연결
+3. preprocessing 마지막 → feature 첫 번째
+4. inspection 루트 노드 (depends_on 없음) → feature 마지막 노드에서 연결
+5. inspection depends_on 기반 노드 간 연결
+6. terminal inspection 노드 (다른 항목의 depends_on에 없는 것) → decision
+
+### 테스트 커버리지
+
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| Constructor | 6 |
+| Input validation | 10 |
+| AgentResult structure | 9 |
+| Blueprint nodes | 9 |
+| Blueprint edges | 5 |
+| SVG generation | 10 |
+| Korean description (LLM) | 5 |
+| LLM graceful degradation | 5 |
+| Directive handling | 4 |
+| Prompt builder | 7 |
+| **합계** | **72** |
+
+### pytest 결과
+
+- 신규 테스트: 72 passed
+- 전체 테스트: 1231 passed (기존 1159 + 신규 72)
+- 실행 시간: 58.29s
+- 경고: 기존과 동일 (PytestCollectionWarning)
+
+### 특이사항
+- BlueprintEdge 실제 필드명은 `source_id`/`target_id` (plan 명세의 `source`/`target`과 다름) — 실제 models.py 확인으로 수정
+- Blueprint 모델에 `blueprint_id`, `title` 없음 — `svg_content`, `algorithm_description`, `parameter_sheet` 사용
+- LLM 실패 시 Blueprint + SVG는 정상 생성, description만 한국어 fallback으로 대체 (status는 "success" 유지)
 
 ---
 
