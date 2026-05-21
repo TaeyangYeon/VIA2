@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 29 (완료)
+## 현재 진행 단계: Step 30 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -41,7 +41,7 @@
 ## Phase 5: Blueprint + 평가 루프
 - [x] Step 28: Blueprint Agent (SVG 다이어그램)
 - [x] Step 29: 파라미터 시트 생성기
-- [ ] Step 30: Evaluation Agent
+- [x] Step 30: Evaluation Agent
 - [ ] Step 31: Feedback Controller
 - [ ] Step 32: Decision Agent (InternVL + DINOv2 통계)
 - [ ] Step 33: Orchestrator (기본 + Retry + Decision 연결)
@@ -2563,3 +2563,107 @@ tests/test_project_structure.py::test_gitignore_exists PASSED
 tests/test_project_structure.py::test_readme_exists PASSED
 tests/test_project_structure.py::test_python_version_file_exists PASSED
 ```
+
+---
+
+## Step 30 완료 내역
+
+### 생성된 파일
+- `agents/evaluation_agent.py` (신규)
+- `tests/test_evaluation_agent.py` (신규)
+
+### EvaluationAgent 인터페이스
+
+**생성자**: `EvaluationAgent(directive: str = "")`
+
+**run 시그니처**:
+```python
+async def run(
+    self,
+    test_result: AgentResult,
+    mode: str = "inspection",
+    pipeline: ProcessingPipeline | None = None,
+    inspection_plan: InspectionPlan | None = None,
+    success_criteria: dict | None = None,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `item_evaluations` | list[dict] | 항목별 평가 결과 (item_id, passed, failure_reason, details) |
+| `overall_passed` | bool | 전체 통과 여부 |
+| `total_items` | int | 전체 항목 수 |
+| `passed_items` | int | 통과 항목 수 |
+| `failed_items` | int | 실패 항목 수 |
+| `failure_summary` | dict[str, int] | failure_reason 별 카운트 |
+| `failure_reason` | str \| None | align 모드 전용: 전체 실패 원인 |
+
+### failure_reason 분류 로직
+
+| 우선순위 | FailureReason | 조건 |
+|---------|---------------|------|
+| 1 | `runtime_error` | skipped=True, depends_on 없음 (또는 plan 없음) |
+| 2 | `inspection_plan_issue` | skipped=True, depends_on 존재 |
+| 3 | `spec_issue` | min_accuracy in success_criteria >= 0.95 |
+| 4 | `algorithm_wrong_category` | pipeline block 타입이 item category와 불일치 |
+| 5 | `pipeline_bad_fit` | accuracy < 0.5 |
+| 6 | `pipeline_bad_params` | 0.5 <= accuracy (기본 fallback) |
+
+### 알고리즘 카테고리 불일치 감지 규칙
+
+| item.category | 불일치 조건 |
+|---------------|------------|
+| EDGE_DETECTION | pipeline에 edge 블록(canny/sobel/laplacian/scharr) 없음 |
+| COLOR_FILTER | pipeline에 색상 블록(hsv_s/hsv_v/lab_l/ycrcb_cr) 없음 |
+| BLOB | pipeline에 edge 블록만 있고 threshold/morphology 블록 없음 |
+
+### 에러 처리
+
+| 케이스 | 응답 |
+|--------|------|
+| test_result.status != "success" | status="error", error_message 전달 |
+| item_results 비어있음 | status="success", total_items=0 |
+| item_result 필드 누락 | 기본값(0.0/"") 사용, 크래시 없음 |
+
+### directive 처리
+- `directive=None` → `self.directive` (생성자 값) 사용
+- `directive=""` → 빈 문자열 사용 (override)
+- `directive="strict"/"lenient"` → 해당 값 사용
+
+### 테스트 커버리지
+
+| 테스트 클래스 | 테스트 수 | 내용 |
+|------------|---------|------|
+| TestEvaluationAgentInstantiation | 4 | 상속, name, directive |
+| TestAgentResultStructure | 13 | status, data 키, item_evaluation 키 |
+| TestPassedItems | 3 | 통과 항목 failure_reason=None |
+| TestPipelineBadFit | 4 | accuracy < 0.5 경계 조건 |
+| TestPipelineBadParams | 6 | 0.5~0.8, 높은 fp/fn rate |
+| TestAlgorithmWrongCategory | 4 | EDGE/COLOR/BLOB 불일치 |
+| TestRuntimeError | 2 | skipped + no depends_on |
+| TestInspectionPlanIssue | 2 | skipped + depends_on |
+| TestSpecIssue | 4 | min_accuracy >= 0.95 |
+| TestAlignModeEvaluation | 6 | align 모드 전용 |
+| TestMixedResults | 2 | 혼합 결과 카운트/summary |
+| TestErrorHandling | 4 | 에러 전달, 빈 결과, 필드 누락 |
+| TestDirectiveHandling | 4 | 생성자/run/None/빈 문자열 |
+| TestOverallEvaluationSummary | 6 | 전체 카운트, summary 일치 |
+| **합계** | **64** | |
+
+### pytest 결과
+```
+tests/test_evaluation_agent.py: 64 passed in 0.14s
+전체: 1364 passed, 0 failed, 5 skipped in 5.21s
+```
+
+### 이슈 및 특이사항
+- `structlog` 패키지가 환경에 없어 별도 설치 (`pip install structlog --break-system-packages`)
+- `pytest-asyncio>=0.23.0` 누락으로 async 테스트 미실행 → `requirements.txt`에 추가 후 설치
+- `tests/test_models.py` 2개 테스트: Python 3.11에서 `asyncio.get_event_loop()` deprecated → `asyncio.run()`으로 수정
+- `frontend/` 디렉토리 누락 → `mkdir frontend` 로 생성 (Step 35 이전 placeholder)
+- `ALGORITHM_WRONG_CATEGORY`는 pipeline 파라미터 제공 시에만 감지됨 (pipeline=None이면 accuracy 기반으로 fallback)
+- align 모드는 per-image 단위 평가 + 전체 failure_reason 단일 값 반환 (inspection 모드와 다른 구조)

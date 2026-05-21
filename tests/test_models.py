@@ -676,7 +676,7 @@ class TestBaseAgent:
         agent = DummyAgent(name="coro_test")
         coro = agent.run()
         assert inspect.iscoroutine(coro)
-        asyncio.get_event_loop().run_until_complete(coro)
+        asyncio.run(coro)
 
     def test_run_returns_agent_result(self):
         from agents.base_agent import BaseAgent
@@ -687,7 +687,7 @@ class TestBaseAgent:
                 return AgentResult(status="success", data={"done": True})
 
         agent = DummyAgent(name="result_test")
-        result = asyncio.get_event_loop().run_until_complete(agent.run())
+        result = asyncio.run(agent.run())
         assert isinstance(result, AgentResult)
         assert result.status == "success"
 
