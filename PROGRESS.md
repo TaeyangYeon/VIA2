@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 30 (완료)
+## 현재 진행 단계: Step 31 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -42,7 +42,7 @@
 - [x] Step 28: Blueprint Agent (SVG 다이어그램)
 - [x] Step 29: 파라미터 시트 생성기
 - [x] Step 30: Evaluation Agent
-- [ ] Step 31: Feedback Controller
+- [x] Step 31: Feedback Controller
 - [ ] Step 32: Decision Agent (InternVL + DINOv2 통계)
 - [ ] Step 33: Orchestrator (기본 + Retry + Decision 연결)
 - [ ] Step 34: 파이프라인 실행 API + 조명 권장사항
@@ -2563,6 +2563,149 @@ tests/test_project_structure.py::test_gitignore_exists PASSED
 tests/test_project_structure.py::test_readme_exists PASSED
 tests/test_project_structure.py::test_python_version_file_exists PASSED
 ```
+
+---
+
+## Step 31 완료 내역
+
+### 생성된 파일
+- `agents/feedback_controller.py` (신규)
+- `tests/test_feedback_controller.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### FeedbackController 인터페이스
+
+**생성자**
+```python
+FeedbackController(directive: str = "")
+```
+
+**run 시그니처**
+```python
+async def run(
+    self,
+    evaluation_result: AgentResult,
+    pipeline: ProcessingPipeline | None = None,
+    vision_judge_result: JudgementResult | None = None,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+### FeedbackContext 데이터클래스 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `iteration` | `int` | 현재 재시도 횟수 (run() 호출마다 +1) |
+| `history` | `list[dict]` | 과거 재시도 기록 (iteration, failure_reason, strategy, vision_judge_suggestion) |
+| `tried_strategies` | `set[str]` | 이미 시도된 전략 이름 집합 |
+| `failed_pipelines` | `list[str]` | 실패한 pipeline_id 목록 (중복 없음) |
+| `constraints` | `list[str]` | 다음 시도를 위해 누적된 제약 조건 |
+
+`to_dict()`: set을 list로 변환하여 JSON 직렬화 보장.
+
+### RetryStrategy 매핑 테이블
+
+| FailureReason | strategy | severity |
+|---------------|----------|----------|
+| `pipeline_bad_fit` | `replace_pipeline` | high |
+| `algorithm_wrong_category` | `change_category` | high |
+| `runtime_error` | `retry_pipeline` | medium |
+| `inspection_plan_issue` | `revise_plan` | medium |
+| `pipeline_bad_params` | `retry_params` | low |
+| `spec_issue` | `relax_spec` | low |
+
+### Severity 우선순위 (dominant strategy 선택)
+
+우선순위 순서 (높은 것 → 낮은 것):
+1. `PIPELINE_BAD_FIT` (high)
+2. `ALGORITHM_WRONG_CATEGORY` (high)
+3. `RUNTIME_ERROR` (medium)
+4. `INSPECTION_PLAN_ISSUE` (medium)
+5. `PIPELINE_BAD_PARAMS` (low)
+6. `SPEC_ISSUE` (low)
+
+같은 severity 내 tie-breaking: 위 목록의 앞 순서 우선 (PIPELINE_BAD_FIT > ALGORITHM_WRONG_CATEGORY 등).
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `strategy` | `str \| None` | 선택된 RetryStrategy 이름 |
+| `severity` | `str \| None` | "high" / "medium" / "low" / None |
+| `primary_failure_reason` | `str \| None` | dominant FailureReason 값 |
+| `context` | `dict` | FeedbackContext.to_dict() |
+| `hints` | `list[str]` | 다음 시도를 위한 인간 가독 힌트 |
+| `should_continue` | `bool` | 미시도 전략이 남아있는지 여부 |
+| `vision_judge_suggestion` | `str \| None` | JudgementResult.next_suggestion |
+
+### 제약 조건 생성 규칙
+
+| FailureReason | 추가 제약 조건 |
+|---------------|---------------|
+| `pipeline_bad_fit` | `"exclude pipeline block types: {block_types}"` (pipeline 제공 시) |
+| `pipeline_bad_params` | `"expand parameter search range or shift distribution"` |
+| `algorithm_wrong_category` | `"override algorithm category; avoid previously selected category"` |
+| `runtime_error` | `"avoid pipeline variants that caused runtime errors"` |
+| `inspection_plan_issue` | `"re-generate inspection plan with corrected dependency ordering"` |
+| `spec_issue` | `"relax min_accuracy spec or flag to user as unrealistic"` |
+
+### should_continue 로직
+
+```
+should_continue = len(tried_strategies) < 6
+```
+- 6가지 전략 모두 시도됐을 때 False
+- 모든 항목 통과(no failures)인 경우도 tried_strategies 미증가 → True 유지
+
+### Directive 처리
+
+| 호출 방식 | 사용 값 |
+|----------|---------|
+| `FeedbackController(directive="X")` | 생성자 directive 저장 |
+| `run(directive="Y")` | "Y" (runtime 우선) |
+| `run(directive=None)` | 생성자 directive fallback |
+| `run(directive="")` | 빈 문자열 (override) |
+
+### 에러 처리 케이스
+
+| 조건 | 응답 |
+|------|------|
+| `evaluation_result.status != "success"` | `status="error"`, `error_message` 전달, iteration 미증가 |
+| `item_evaluations` 비어있음 | `status="success"`, `strategy=None`, `primary_failure_reason=None` |
+| 모든 항목 통과 (failure_reason 없음) | `status="success"`, `strategy=None` |
+
+### 테스트 커버리지
+
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| Instantiation | 9 |
+| Strategy mapping (all 6 reasons × strategy + severity) | 14 |
+| Dominant strategy selection | 7 |
+| Vision Judge integration | 4 |
+| Context accumulation | 7 |
+| Pipeline tracking | 5 |
+| Constraint generation | 9 |
+| should_continue flag | 4 |
+| reset() | 7 |
+| Directive handling | 4 |
+| Error handling | 8 |
+| AgentResult structure | 12 |
+| FeedbackContext.to_dict() | 4 |
+| **합계** | **95** |
+
+### pytest 결과
+```
+tests/test_feedback_controller.py: 95 passed in 0.14s
+전체: 1459 passed, 0 failed, 5 skipped in 7.17s
+```
+
+### 이슈 및 특이사항
+- LLM 어댑터 전혀 없음 — 100% 결정론적 규칙 기반 Python 로직
+- `FeedbackController`는 `BaseAgent`를 상속하지 않음 (LLM 에이전트가 아닌 컨트롤러이므로 독립 클래스)
+- `FeedbackContext.to_dict()`에서 `tried_strategies`(set) → list 변환으로 JSON 직렬화 보장
+- `vision_judge_result.next_suggestion`이 빈 문자열이면 `None`으로 처리 (의미 없는 빈 제안 방지)
+- `failed_pipelines` 중복 방지: `pipeline_id not in` 체크로 동일 파이프라인 재추가 차단
 
 ---
 
