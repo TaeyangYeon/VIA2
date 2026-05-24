@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 34 (완료)
+## 현재 진행 단계: Step 35 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -48,7 +48,7 @@
 - [x] Step 34: 파이프라인 실행 API + 조명 권장사항
 
 ## Phase 6: 메인 프론트엔드
-- [ ] Step 35: Electron + React + TypeScript + TailwindCSS 초기화
+- [x] Step 35: Electron + React + TypeScript + TailwindCSS 초기화
 - [ ] Step 36: Redux Store + API 클라이언트
 - [ ] Step 37: 전체 레이아웃 + Input Panel
 - [ ] Step 38: ROI 드로잉 UI
@@ -68,6 +68,172 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 35 완료 내역
+
+### 생성된 파일
+
+**프로젝트 설정**
+- `frontend/package.json` (신규) — Electron 32 + Vite 5 + React 18 + TypeScript 5 + TailwindCSS 3
+- `frontend/tsconfig.json` (신규) — ESNext target, bundler moduleResolution, strict 모드
+- `frontend/tsconfig.node.json` (신규) — Vite 설정 파일용 TypeScript 설정
+- `frontend/vite.config.ts` (신규) — @vitejs/plugin-react, base='./', port=5173
+- `frontend/tailwind.config.js` (신규) — custom color 테마, darkMode='class'
+- `frontend/postcss.config.js` (신규) — tailwindcss + autoprefixer
+- `frontend/.eslintrc.cjs` (신규) — @typescript-eslint + react-hooks 플러그인
+- `frontend/.prettierrc` (신규) — singleQuote, semi, tabWidth=2
+
+**Electron 메인 프로세스**
+- `frontend/main.js` (신규) — BrowserWindow 1280×800, dev/prod 분기 로드
+
+**React 소스**
+- `frontend/index.html` (신규) — Vite 진입점, `<div id="root">`
+- `frontend/src/main.tsx` (신규) — ReactDOM.createRoot + StrictMode
+- `frontend/src/App.tsx` (신규) — 다크 배경 앱 셸, VIA2 타이틀 표시
+- `frontend/src/styles/design-tokens.ts` (신규) — 전체 디자인 토큰 export
+- `frontend/src/styles/globals.css` (신규) — Tailwind 지시자 + glass morphism 유틸리티
+- `frontend/src/jest.setup.ts` (신규) — @testing-library/jest-dom import
+- `frontend/src/__mocks__/styleMock.js` (신규) — CSS import mock
+
+**테스트 파일**
+- `frontend/src/__tests__/design-tokens.test.ts` (신규)
+- `frontend/src/__tests__/App.test.tsx` (신규)
+
+### 디자인 토큰 색상값
+
+| 그룹 | 키 | 값 |
+|------|----|----|
+| background | top | `#0a0a0a` |
+| background | card | `#111111` |
+| background | secondary | `#1a1a1a` |
+| background | hover | `#222222` |
+| border | default | `#2a2a2a` |
+| border | accent | `#3a3a3a` |
+| text | primary | `#f5f5f5` |
+| text | secondary | `#a0a0a0` |
+| text | disabled | `#555555` |
+| accent | action | `#ffffff` |
+| accent | success | `#4ade80` |
+| accent | warning | `#facc15` |
+| accent | error | `#f87171` |
+| accent | info | `#60a5fa` |
+
+### package.json 스크립트 및 주요 의존성
+
+| 스크립트 | 명령 |
+|---------|------|
+| `dev` | `vite` |
+| `build` | `tsc && vite build` |
+| `electron` | `electron .` |
+| `electron:dev` | `ELECTRON_DEV=true electron .` |
+| `test` | `jest` |
+| `lint` | `eslint src --ext .ts,.tsx` |
+
+| 패키지 | 버전 | 용도 |
+|--------|------|------|
+| react | ^18.3.1 | UI 라이브러리 |
+| react-dom | ^18.3.1 | DOM 렌더러 |
+| lucide-react | ^0.446.0 | 아이콘 라이브러리 |
+| electron | ^32.1.2 | 데스크톱 런타임 |
+| vite | ^5.4.8 | 번들러 / 개발 서버 |
+| tailwindcss | ^3.4.13 | CSS 유틸리티 (v3) |
+| typescript | ^5.6.3 | 타입 시스템 |
+| jest | ^29.7.0 | 테스트 러너 |
+| ts-jest | ^29.2.5 | TypeScript Jest 변환기 |
+| @testing-library/react | ^16.0.0 | React 테스트 유틸리티 |
+| @testing-library/jest-dom | ^6.6.3 | jest DOM matcher 확장 |
+
+### Jest 설정 상세
+
+- preset: `ts-jest`
+- testEnvironment: `jsdom`
+- setupFilesAfterEnv: `src/jest.setup.ts` (@testing-library/jest-dom 로드)
+- moduleNameMapper: CSS 파일 → `styleMock.js`
+- ts-jest transform: `jsx: "react-jsx"` (tsconfig override)
+
+### Electron main.js 설정
+
+- 창 크기: 1280×800 (minWidth=960, minHeight=600)
+- backgroundColor: `#0a0a0a`
+- titleBarStyle: `hiddenInset` (macOS 네이티브 느낌)
+- 개발 모드 감지: `ELECTRON_DEV=true` 환경변수 또는 `!app.isPackaged`
+- 개발: `http://localhost:5173` 로드 + DevTools 자동 열기
+- 프로덕션: `dist/index.html` 파일 로드
+
+### TailwindCSS 커스텀 테마 확장
+
+```js
+colors: {
+  'bg-top': '#0a0a0a', 'bg-card': '#111111',
+  'bg-secondary': '#1a1a1a', 'bg-hover': '#222222',
+  'border-default': '#2a2a2a', 'border-accent': '#3a3a3a',
+  'text-primary': '#f5f5f5', 'text-secondary': '#a0a0a0', 'text-disabled': '#555555',
+  'accent-action': '#ffffff', 'accent-success': '#4ade80',
+  'accent-warning': '#facc15', 'accent-error': '#f87171', 'accent-info': '#60a5fa',
+}
+```
+
+### 테스트 커버리지
+
+| 테스트 파일 | 카테고리 | 테스트 수 |
+|-----------|---------|---------|
+| design-tokens.test.ts | background 키 존재 | 1 |
+| design-tokens.test.ts | border 키 존재 | 1 |
+| design-tokens.test.ts | text 키 존재 | 1 |
+| design-tokens.test.ts | accent 키 존재 | 1 |
+| design-tokens.test.ts | 유효한 hex 값 검증 | 1 |
+| design-tokens.test.ts | 어두운 중성 배경 검증 | 1 |
+| design-tokens.test.ts | typography.fontFamily body/code | 2 |
+| design-tokens.test.ts | Inter 폰트 포함 | 1 |
+| design-tokens.test.ts | JetBrains Mono 포함 | 1 |
+| design-tokens.test.ts | spacing.base = 8 | 1 |
+| design-tokens.test.ts | transitions.default 문자열 | 1 |
+| App.test.tsx | 렌더 크래시 없음 | 1 |
+| App.test.tsx | VIA2 타이틀 표시 | 1 |
+| App.test.tsx | Vision Intelligence Agent 표시 | 1 |
+| App.test.tsx | 다크 배경 클래스/스타일 | 1 |
+| **합계** | | **15** |
+
+### npm test 결과
+
+```
+Test Suites: 2 passed, 2 total
+Tests:       15 passed, 15 total
+Snapshots:   0 total
+Time:        1.757 s
+```
+
+### npm run dev 결과
+
+```
+VITE v5.4.21  ready in 559 ms
+➜  Local:   http://localhost:5173/
+HTTP 200 확인
+```
+
+### npm run build 결과
+
+```
+vite v5.4.21 building for production...
+✓ 33 modules transformed.
+dist/index.html                   0.59 kB │ gzip:  0.38 kB
+dist/assets/index-WW6IoAM_.css    6.18 kB │ gzip:  1.81 kB
+dist/assets/index-C2LTl-lj.js   143.29 kB │ gzip: 46.09 kB
+✓ built in 1.06s
+```
+
+### 이슈 및 해결
+
+1. **`setupFilesAfterFramework` → `setupFilesAfterEnv`**: package.json jest 설정에서 Jest 설정 키명을 잘못 사용 (`setupFilesAfterFramework`). `node_modules/jest-config/build/Defaults.js` 확인으로 올바른 키 `setupFilesAfterEnv` 발견 후 수정.
+2. **CSS import mock**: ts-jest 환경에서 CSS import가 실패하므로 `src/__mocks__/styleMock.js`와 `moduleNameMapper` 설정 추가.
+3. **TailwindCSS v3**: v4가 아닌 v3.4.13 사용 — 안정성 우선, PostCSS 방식 유지.
+4. **TS6133 `import React` 제거**: React 18 + `jsx: "react-jsx"` 설정에서는 JSX transform이 자동 처리되므로 `import React from 'react'`가 불필요. `tsconfig.json`의 `noUnusedLocals: true`가 빌드 오류를 유발. `src/App.tsx`와 `src/__tests__/App.test.tsx` 양쪽에서 해당 import 제거로 해결. `npm run build` 성공 확인.
+
+### 주의사항
+
+- `npm run electron` / `npm run electron:dev`는 반드시 `frontend/` 디렉토리 안에서 실행해야 함 (프로젝트 루트에서 실행 시 `main.js`를 찾지 못함).
 
 ---
 
