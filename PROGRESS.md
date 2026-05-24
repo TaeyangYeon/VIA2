@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 33 (완료)
+## 현재 진행 단계: Step 34 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -45,7 +45,7 @@
 - [x] Step 31: Feedback Controller
 - [x] Step 32: Decision Agent (InternVL + DINOv2 통계)
 - [x] Step 33: Orchestrator (기본 + Retry + Decision 연결)
-- [ ] Step 34: 파이프라인 실행 API + 조명 권장사항
+- [x] Step 34: 파이프라인 실행 API + 조명 권장사항
 
 ## Phase 6: 메인 프론트엔드
 - [ ] Step 35: Electron + React + TypeScript + TailwindCSS 초기화
@@ -68,6 +68,114 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 34 완료 내역
+
+### 생성된 파일
+- `agents/lighting_advisor.py` (신규)
+- `backend/services/execution_manager.py` (신규)
+- `backend/routers/execute.py` (신규)
+- `backend/main.py` (execute_router 등록)
+- `tests/test_lighting_advisor.py` (신규)
+- `tests/test_execution_manager.py` (신규)
+- `tests/test_execute_api.py` (신규)
+
+### LightingAdvisor 규칙 테이블
+
+| 조건 | 카테고리 | 우선순위 |
+|------|----------|----------|
+| `surface_type == "metal"` | polarization | high |
+| `reflection_level > 0.6` | light_shape | high |
+| `lighting_uniformity < 0.5` | light_shape | high |
+| `illumination_type == "spot"` | light_type | medium |
+| `contrast < 0.3` | angle | medium |
+| `has_shadow_region == True` | light_type | medium |
+| `noise_level > 0.3` | intensity | low |
+
+### ExecutionManager 인터페이스
+
+**Constructor:** `ExecutionManager()` — asyncio.Lock 기반, 모듈 레벨 싱글턴 (`get_manager()`)
+
+**States:** `"pending"` → `"running"` → `"completed"` / `"failed"` / `"cancelled"`
+
+| 메서드 | 반환 | 설명 |
+|--------|------|------|
+| `start_execution(user_text, images, ng_images, roi, text_query, success_criteria, directives, engine_settings)` | `str` (execution_id) | Orchestrator를 백그라운드 태스크로 실행 |
+| `get_status(execution_id)` | `dict \| None` | execution_id, status, result, error, created_at, completed_at |
+| `cancel_execution(execution_id)` | `"cancelled" \| "not_found" \| "already_completed"` | 태스크 취소 |
+| `list_executions()` | `list[dict]` | 전체 실행 요약 목록 |
+
+### Execute API 엔드포인트
+
+| Method | Path | Status | 설명 |
+|--------|------|--------|------|
+| POST | `/api/execute` | 202 | 파이프라인 실행 시작 |
+| GET | `/api/execute` | 200 | 전체 실행 목록 조회 |
+| GET | `/api/execute/{id}` | 200 | 실행 상태 + 결과 조회 (완료 시 lighting_suggestions 포함) |
+| DELETE | `/api/execute/{id}` | 200/404/409 | 실행 취소 |
+
+### API Request/Response 예시
+
+**POST /api/execute**
+```json
+// Request
+{"user_text": "용접 비드 검사"}
+
+// Response 202
+{"execution_id": "550e8400-e29b-41d4-a716-446655440000", "status": "pending"}
+```
+
+**GET /api/execute/{id} (completed)**
+```json
+{
+  "execution_id": "550e8400-...",
+  "status": "completed",
+  "created_at": "2026-05-24T10:00:00+00:00",
+  "completed_at": "2026-05-24T10:02:30+00:00",
+  "result": {
+    "mode": "inspection",
+    "scene_context": {"contrast": 0.4, "surface_type": "metal"},
+    "lighting_suggestions": [
+      {"category": "polarization", "suggestion": "...", "reason": "...", "priority": "high"}
+    ]
+  }
+}
+```
+
+**DELETE /api/execute/{id}**
+```json
+// 200: {"message": "Execution cancelled", "execution_id": "..."}
+// 404: {"detail": "Execution not found"}
+// 409: {"detail": "Execution already completed or cancelled"}
+```
+
+### 테스트 커버리지
+
+| 카테고리 | 테스트 수 |
+|----------|----------|
+| LightingAdvisor 규칙 | 24 |
+| ExecutionManager 라이프사이클 | 14 |
+| Execute API 엔드포인트 | 14 |
+| **합계** | **52** |
+
+### pytest 결과
+
+**Step 34 테스트 (52개):**
+```
+52 passed in 1.07s
+```
+
+**전체 테스트 스위트:**
+```
+1659 passed, 5 skipped in 8.21s
+```
+
+### 이슈 및 특이사항
+- 백그라운드 태스크 패치 스코프: `asyncio.create_task()` 후 patch 블록을 벗어나면 mock이 해제되어 실제 Orchestrator가 실행됨. `await asyncio.sleep()`을 `with patch()` 블록 안으로 이동하여 해결.
+- scene_context 필드: Orchestrator `_build_result()`는 contrast, surface_type, depth_complexity, optimal_color_space, roi만 포함한 요약 dict를 반환. LightingAdvisor는 `.get()` + 안전한 기본값으로 누락 필드를 처리.
+- `cancel_execution()`: 세 가지 문자열 반환값(`"cancelled"`, `"not_found"`, `"already_completed"`)으로 라우터에서 HTTP 상태코드 분기.
 
 ---
 

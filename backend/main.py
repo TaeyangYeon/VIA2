@@ -6,6 +6,7 @@ from backend.routers.images import router as images_router
 from backend.routers.roi import router as roi_router
 from backend.routers.config import router as config_router
 from backend.routers.directives import router as directives_router
+from backend.routers.execute import router as execute_router
 from backend.routers.logs import router as logs_router
 
 app = FastAPI(title=settings.app_name, version=settings.version)
@@ -24,6 +25,7 @@ app.include_router(roi_router, prefix="/api")
 app.include_router(config_router, prefix="/api")
 app.include_router(directives_router, prefix="/api")
 app.include_router(logs_router, prefix="/api")
+app.include_router(execute_router, prefix="/api")
 
 
 @app.get("/health")
