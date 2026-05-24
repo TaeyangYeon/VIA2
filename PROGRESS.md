@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 32 (완료)
+## 현재 진행 단계: Step 33 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -44,7 +44,7 @@
 - [x] Step 30: Evaluation Agent
 - [x] Step 31: Feedback Controller
 - [x] Step 32: Decision Agent (InternVL + DINOv2 통계)
-- [ ] Step 33: Orchestrator (기본 + Retry + Decision 연결)
+- [x] Step 33: Orchestrator (기본 + Retry + Decision 연결)
 - [ ] Step 34: 파이프라인 실행 API + 조명 권장사항
 
 ## Phase 6: 메인 프론트엔드
@@ -68,6 +68,148 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 33 완료 내역
+
+### 생성된 파일
+- `agents/orchestrator.py` (신규)
+- `tests/test_orchestrator.py` (신규)
+- `PROGRESS.md` (업데이트)
+
+### Orchestrator 인터페이스
+
+**Constructor:**
+```python
+Orchestrator(
+    adapter: BaseAIAdapter,
+    remote_url: str,
+    model: str = "qwen2.5-coder:7b",
+    max_iterations: int = 3,
+    directives: AgentDirectives | None = None,
+) -> None
+```
+
+**run() signature:**
+```python
+async def run(
+    self,
+    user_text: str,
+    images: list[np.ndarray],               # OK images
+    ng_images: list[np.ndarray] | None = None,  # NG images (inspection mode)
+    roi: dict | None = None,                # {x1, y1, x2, y2}
+    text_query: str | None = None,          # For ROI auto-detection
+    success_criteria: dict | None = None,   # Override from SpecAgent
+) -> AgentResult
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `mode` | `str` | `"inspection"` \| `"align"` |
+| `spec` | `dict` | SpecAgent 결과 전체 |
+| `scene_context` | `dict` | 이미지 진단 요약 (contrast, surface_type, roi 등) |
+| `pipeline` | `dict \| None` | 선택된 ProcessingPipeline (asdict) |
+| `algorithm_category` | `str \| None` | AlgorithmCategory enum 값 |
+| `inspection_plan` | `dict \| None` | InspectionPlan (asdict), inspection 모드만 |
+| `blueprint` | `dict \| None` | Blueprint (asdict), inspection 모드만 |
+| `parameter_sheets` | `list[dict] \| None` | NodeParameterSheet 목록, inspection 모드만 |
+| `test_result` | `dict` | TestAgent 결과 데이터 |
+| `evaluation` | `dict` | EvaluationAgent 결과 데이터 |
+| `iterations_used` | `int` | 실제 사용된 반복 횟수 |
+| `decision` | `dict` | DecisionAgent 결과 (max_iterations 초과 시만) |
+
+### Pipeline Execution Order
+
+| 단계 | 에이전트 | 비고 |
+|------|---------|------|
+| 1 | SpecAgent | mode, goal, success_criteria 파싱 |
+| 2 | ImageAnalysisAgent | 이미지 진단 (OpenCV) |
+| 3 | DepthAgent | 깊이 지도 (원격) |
+| 4 | MaterialAgent | 재질 분류 (원격) |
+| 5 | ROIAgent | ROI 처리 (원격 auto / 로컬 manual) |
+| 6 | build_scene_context | 분석 결과 통합 |
+| 7 | PipelineComposer | 3~5개 후보 파이프라인 생성 |
+| 8 | PipelineSelector | 최적 파이프라인 선정 (ParameterSearcher + VisionJudge 내부) |
+| 9 | AlgorithmSelector | 알고리즘 카테고리 결정 |
+| 10 | InspectionPlanAgent | 검사 항목 설계 (inspection 모드만) |
+| 11 | BlueprintAgent | SVG 블루프린트 생성 (inspection 모드만) |
+| 12 | ParameterSheetGenerator | 파라미터 시트 생성 (inspection 모드만) |
+| 13 | TestAgentInspection / TestAgentAlign | 실행 및 메트릭 측정 |
+| 14 | EvaluationAgent | 결과 분석, 실패 원인 분류 |
+| 15 | (통과) → 성공 반환 | |
+| 16 | (실패) → FeedbackController | 재시도 전략 결정 |
+| 17 | 재시도 루프 | max_iterations까지 반복 |
+| 18 | (초과) → DecisionAgent | 최종 verdict 판정 |
+
+### Retry Logic 매핑
+
+| `failure_reason` | FeedbackController 전략 | Retry 시작 스테이지 | 재실행 에이전트 |
+|-----------------|------------------------|-------------------|----------------|
+| `pipeline_bad_fit` | `replace_pipeline` | `compose` | PipelineComposer 이후 전체 |
+| `pipeline_bad_params` | `retry_params` | `select` | PipelineSelector 이후 |
+| `algorithm_wrong_category` | `change_category` | `compose` | PipelineComposer 이후 전체 |
+| `runtime_error` | `retry_pipeline` | `select` | PipelineSelector 이후 |
+| `inspection_plan_issue` | `revise_plan` | `plan` | InspectionPlanAgent 이후 |
+| `spec_issue` | `relax_spec` | `compose` | success_criteria 완화 후 전체 |
+
+### Directive Routing 테이블
+
+| `AgentDirectives` 필드 | 전달 대상 에이전트 |
+|----------------------|----------------|
+| `spec` | SpecAgent |
+| `image_analysis` | ImageAnalysisAgent |
+| `depth` | DepthAgent |
+| `material` | MaterialAgent |
+| `pipeline_composer` | PipelineComposer |
+| `vision_judge` | VisionJudgeAgent, PipelineSelector |
+| `inspection_plan` | InspectionPlanAgent |
+| `test` | TestAgentInspection, TestAgentAlign |
+
+### Error Handling 케이스
+
+| 케이스 | 응답 |
+|--------|------|
+| `user_text` 빈 문자열 | `status="error"`, `"user_text is required"` |
+| `images` 빈 리스트 | `status="error"`, `"images list is empty"` |
+| `success_criteria` 값 > 1.0 또는 < 0.0 | `status="error"`, 필드명 포함 메시지 |
+| inspection 모드에서 `ng_images=None` | `status="error"`, `"inspection mode requires ng_images"` |
+| 각 에이전트 실패 | `status="error"`, 에이전트명 + 원본 에러 메시지 |
+| max_iterations 초과 | `status="success"` + `data.decision` 포함 |
+
+### 테스트 커버리지
+
+| 테스트 클래스 | 테스트 수 | 내용 |
+|------------|---------|------|
+| TestOrchestratorInstantiation | 11 | 생성자, 기본값, 서브에이전트 생성, directive 라우팅 |
+| TestOrchestratorInputValidation | 7 | 빈 입력, 잘못된 criteria, ng_images 누락 |
+| TestOrchestratorHappyPathInspection | 14 | 전체 필드 검증, 에이전트 호출 횟수 |
+| TestOrchestratorHappyPathAlign | 8 | align 모드 전용 동작 검증 |
+| TestOrchestratorAgentErrors | 6 | 각 에이전트 실패 → 오류 전파 |
+| TestOrchestratorRetryMechanics | 3 | 반복 횟수 증가, FeedbackController 호출 |
+| TestOrchestratorRetryPaths | 6 | 6가지 failure_reason별 재시도 스테이지 검증 |
+| TestOrchestratorMaxIterations | 5 | DecisionAgent 호출, decision 필드 포함 |
+| TestOrchestratorDirectiveRouting | 8 | directive 필드별 에이전트 전달 확인 |
+| TestOrchestratorSuccessCriteria | 2 | 사용자 override vs SpecAgent criteria |
+| TestOrchestratorEdgeCases | 5 | 다중 이미지, roi/text_query 전달, 실행 시간 |
+| **합계** | **75** | |
+
+### pytest 결과
+```
+tests/test_orchestrator.py: 75 passed in 0.81s
+전체: 1607 passed, 0 failed, 5 skipped in 6.10s
+```
+
+### 이슈 및 특이사항
+- Orchestrator는 BaseAgent를 상속하지 않음 — 에이전트 코디네이터이므로 독립 클래스
+- FeedbackController도 BaseAgent를 상속하지 않으므로 `directive` 필드를 통해 생성
+- `PipelineSelector` 생성 시 `ParameterSearcher`와 `VisionJudgeAgent`를 내부에서 생성하여 주입
+- align 모드에서는 InspectionPlanAgent, BlueprintAgent, ParameterSheetGenerator를 건너뜀
+- test 실패(status="error") 시 합성 runtime_error 평가로 FeedbackController 실행 후 "select" 스테이지에서 재시도
+- DecisionAgent 호출 시 align 모드에서 ng_images가 None이면 ok_images를 대신 전달 (DecisionAgent는 align 시 즉시 HARDWARE_IMPROVEMENT 반환)
+- `spec_issue` 재시도 시 `min_accuracy`를 0.1 감소하여 완화 (최소 0.0)
 
 ---
 
