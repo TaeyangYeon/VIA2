@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 31 (완료)
+## 현재 진행 단계: Step 32 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -43,7 +43,7 @@
 - [x] Step 29: 파라미터 시트 생성기
 - [x] Step 30: Evaluation Agent
 - [x] Step 31: Feedback Controller
-- [ ] Step 32: Decision Agent (InternVL + DINOv2 통계)
+- [x] Step 32: Decision Agent (InternVL + DINOv2 통계)
 - [ ] Step 33: Orchestrator (기본 + Retry + Decision 연결)
 - [ ] Step 34: 파이프라인 실행 API + 조명 권장사항
 
@@ -68,6 +68,141 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 32 완료 내역
+
+### 생성된 파일
+- `agents/decision_agent.py` (신규)
+- `agents/prompts/decision_prompt.py` (신규)
+- `tests/test_decision_agent.py` (신규)
+
+### DecisionAgent 인터페이스
+
+**Constructor:**
+```python
+DecisionAgent(remote_url: str, directive: str = "")
+```
+
+**run() signature:**
+```python
+async def run(
+    self,
+    mode: str,                              # "inspection" | "align"
+    ng_images: list[np.ndarray],            # NG sample images
+    evaluation_result: AgentResult | None = None,
+    feedback_context: dict | None = None,   # FeedbackContext.to_dict() output
+    vision_judge_scores: list[float] | None = None,
+    success_criteria: dict | None = None,
+    directive: str | None = None,
+    **kwargs,
+) -> AgentResult
+```
+
+### AgentResult data 필드
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `verdict` | `str` | DecisionVerdict enum 값 |
+| `reasoning` | `str` | 한국어 판정 이유 |
+| `dinov2_variability` | `float \| None` | DINOv2 특징 변동계수(CV) |
+| `internvl_analysis` | `dict \| None` | InternVL 응답 또는 None |
+| `vision_judge_avg_score` | `float \| None` | Vision Judge 점수 평균 |
+| `recommendation` | `str` | 한국어 실행 권고문 |
+| `confidence` | `float` | 판정 신뢰도 (0.0~1.0) |
+
+### Decision logic priority
+
+| 우선순위 | 조건 | Verdict |
+|---------|------|---------|
+| 1 | mode == "align" | `HARDWARE_IMPROVEMENT` |
+| 2 | vision_judge_avg >= 0.7 AND tried_strategies < 4 | `RULE_BASED` |
+| 3 | DINOv2 CV < 0.2 | `EDGE_LEARNING` |
+| 4 | DINOv2 CV >= 0.2 | `DEEP_LEARNING` |
+| 5 | DINOv2 실패, InternVL "consistent" | `EDGE_LEARNING` |
+| 6 | DINOv2 실패, InternVL "diverse"/"mixed" | `DEEP_LEARNING` |
+| 7 | 양쪽 모두 실패 | `DEEP_LEARNING` (confidence=0.3) |
+
+### DINOv2 variability 임계값
+
+| CV 범위 | 해석 | 권장 방향 |
+|---------|------|----------|
+| CV < 0.2 | 일관된 결함 패턴 | Edge Learning |
+| CV >= 0.2 | 다양/불규칙한 결함 패턴 | Deep Learning |
+
+**CV 계산 공식:**
+```
+feature_matrix = stack([f0, f1, ...])   # shape [N, D]
+cv_per_dim = std(dim) / (|mean(dim)| + 1e-8)
+overall_cv = mean(cv_per_dim)
+```
+
+### InternVL remote protocol
+
+**Request:**
+```
+POST {remote_url}/internvl/analyze
+Content-Type: application/json
+{"images": ["<base64 JPEG>", ...], "prompt": "<analysis prompt>"}
+```
+
+**Response:**
+```json
+{"pattern_type": "consistent"|"diverse"|"mixed", "complexity_score": float, "reasoning": str}
+```
+
+### 에러 처리 케이스
+
+| 케이스 | 응답 |
+|--------|------|
+| `ng_images` 빈 리스트 | `status="error"`, `error_message="No NG images provided for decision"` |
+| mode == "align" | 즉시 `HARDWARE_IMPROVEMENT` 반환 (HTTP 호출 없음) |
+| DINOv2 `ConnectError` | 경고 로그, `dinov2_variability=None`, InternVL로 진행 |
+| InternVL `ConnectError` | 경고 로그, `internvl_analysis=None`, DINOv2로 진행 |
+| 양쪽 모두 실패 | `DEEP_LEARNING`, `confidence=0.3` |
+
+### Directive 처리
+
+| 상황 | 사용되는 directive |
+|------|------------------|
+| `directive=None` | `self.directive` (생성자 값) |
+| `directive=""` | 빈 문자열 (override) |
+| `directive="x"` | `"x"` (override) |
+| `self.directive` 변경 없음 | run() 호출이 self.directive를 변경하지 않음 |
+
+### 테스트 커버리지
+
+| 테스트 클래스 | 테스트 수 | 내용 |
+|------------|---------|------|
+| TestInstantiation | 5 | 상속, name, remote_url, directive |
+| TestAlignMode | 6 | HARDWARE_IMPROVEMENT, HTTP 미호출, confidence=1.0 |
+| TestAgentResultStructure | 12 | status, 7개 data 필드, 타입 검증 |
+| TestComputeFeatureCv | 5 | 동일/단일/빈/다양/유사 feature CV |
+| TestDinov2VariabilityVerdict | 4 | 낮은/높은 CV → verdict, 저장, 경계값 |
+| TestInternVLIntegration | 4 | 저장, DINOv2만, InternVL만 (consistent/mixed) |
+| TestVisionJudgeScoreInfluence | 6 | RULE_BASED 조건 (avg, tried_count) |
+| TestDecisionLogicPriority | 3 | align > rule_based > EL/DL |
+| TestErrorHandling | 6 | 빈 이미지, DINOv2 실패, InternVL 실패, 양쪽 실패 |
+| TestDirectiveHandling | 4 | 생성자/override/None/빈 문자열 |
+| TestReasoningOutput | 5 | 한국어 포함, RULE_BASED 점수 언급 |
+| TestConfidenceScoring | 5 | 범위, align=1.0, rule_based, 실패=0.3, 합의 |
+| TestBuildDecisionPrompt | 8 | tuple, 문자열, mode/CV/directive 포함 |
+| **합계** | **73** | |
+
+### pytest 결과
+```
+tests/test_decision_agent.py: 73 passed in 0.56s
+전체: 1532 passed, 0 failed, 5 skipped in 7.20s
+```
+
+### 이슈 및 특이사항
+- `DecisionVerdict.HARDWARE_IMPROVEMENT` (not HW_IMPROVEMENT) — 프롬프트의 약식 표기와 실제 enum 값 불일치, 소스 파일 확인 필수
+- DINOv2는 NG 이미지당 1회 호출 (N images → N calls), InternVL은 모든 이미지를 한 번에 전송
+- `_compute_feature_cv` 함수를 모듈 레벨에서 export하여 단위 테스트에서 직접 검증 가능
+- 샘플 수 < 2일 때 CV = 0.0 반환 (단일 이미지 → Edge Learning으로 보수적 처리)
+- InternVL "mixed" pattern_type → DEEP_LEARNING (inconsistent의 보수적 처리)
+- 양쪽 서버 모두 실패 시 가장 강력한 방법(DL)을 안전 기본값으로 사용
 
 ---
 
