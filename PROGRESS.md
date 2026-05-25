@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 39 (완료)
+## 현재 진행 단계: Step 40 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -53,7 +53,7 @@
 - [x] Step 37: 전체 레이아웃 + Input Panel
 - [x] Step 38: ROI 드로잉 UI
 - [x] Step 39: Engine 설정 + Directive Panel
-- [ ] Step 40: Config Panel + Execution Panel
+- [x] Step 40: Config Panel + Execution Panel
 - [ ] Step 41: Result Panel (Blueprint Viewer)
 
 ## Phase 7: Light Test 윈도우
@@ -135,6 +135,80 @@ npx tsc --noEmit → 오류 없음 (출력 없음)
 - **JSDOM 호환 접기**: TailwindCSS `hidden` 클래스 대신 `style={{ display: isExpanded ? 'block' : 'none' }}` 사용 — JSDOM은 Tailwind 클래스를 실제로 적용하지 않으므로 `toBeVisible()` 테스트가 실패함. `style` 인라인은 JSDOM에서 정확히 동작함
 - **로컬 상태 vs Redux**: 편집 중에는 로컬 `useState`로 관리하고, Save 성공 시에만 Redux 동기화 (불필요한 Redux 업데이트 방지)
 - **updateEngine 시그니처**: `api.ts`에서 `updateEngine(settings: EngineSettings)`는 `Partial`이 아닌 전체 객체를 받으므로 `buildSettings()`로 전체 EngineSettings 구성 후 전달
+
+---
+
+## Step 40 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 경로 | 역할 | 상태 |
+|-----------|------|------|
+| `frontend/src/components/panels/ConfigPanel.tsx` | 모드 토글, 최대 반복 수, 성공 기준 입력 폼, 극단 목표 경고, 저장 피드백 | 신규 |
+| `frontend/src/components/panels/ExecutionPanel.tsx` | 실행 시작/중지, 에이전트 진행 표시, 상태 폴링, 목표 검증 경고 | 신규 |
+| `frontend/src/__tests__/ConfigPanel.test.tsx` | ConfigPanel 단위 테스트 (30개) | 신규 |
+| `frontend/src/__tests__/ExecutionPanel.test.tsx` | ExecutionPanel 단위 테스트 (22개) | 신규 |
+| `frontend/src/components/Layout.tsx` | Config / Execution 플레이스홀더 → 실제 컴포넌트 교체 | 수정 |
+| `PROGRESS.md` | 진행 기록 업데이트 | 수정 |
+
+### ConfigPanel 기능 목록
+
+- **모드 토글**: "Inspection" / "Align" 라디오 버튼 → `setConfig` dispatch
+- **최대 반복 수**: number input (1–10 범위), 기본값 3, Redux `config.max_iteration` 초기화
+- **성공 기준 — Inspection 모드**: accuracy, fp_rate, fn_rate 입력 (0–1 범위, nullable 숫자)
+- **성공 기준 — Align 모드**: coord_error 입력 (양수, px 단위, nullable)
+- **모드 기반 조건부 렌더링**: Inspection ↔ Align 전환 시 관련 필드만 표시 (조건부 렌더링으로 DOM에서 제거)
+- **극단 목표 경고** (`extreme-goal-warning`): accuracy ≥ 0.99 · fp_rate ≤ 0.001 · fn_rate ≤ 0.001 · coord_error ≤ 0.5 중 하나라도 해당 시 노란색 경고 표시 (#facc15)
+- **저장**: "Save" 버튼 → `api.saveConfig(config)` POST + Redux `setConfig` dispatch
+- **저장 피드백**: 저장 중 `save-loading` 스피너, 성공 시 `save-success` (3초 소멸), 실패 시 `save-error` (4초 소멸)
+- **Redux 초기화**: 마운트 시 `store.config` 값으로 로컬 상태 초기화
+
+### ExecutionPanel 기능 목록
+
+- **시작 버튼** (`start-btn`): `api.startExecution({ user_text: '' })` POST, 이미지 없으면 비활성화
+- **중지 버튼** (`stop-btn`): `api.cancelExecution(execution_id)` DELETE, running 상태에서만 표시
+- **에이전트 진행 표시**: `current_agent` 이름 + 펄스 점 인디케이터 (`current-agent-display`)
+- **반복 카운터**: `current_iteration` / `max_iteration` (`iteration-counter`)
+- **진행률 바**: 0–100% width 애니메이션 (`progress-bar`)
+- **상태 폴링**: execution_id 설정 + running 상태일 때 `api.getExecution(execution_id)` 2초 간격 폴링, `setInterval` / `useEffect` cleanup으로 메모리 누수 방지
+- **폴링 → Redux 업데이트**: 응답으로 execution 슬라이스 갱신, result 포함 시 `setResult` dispatch
+- **폴링 종료 조건**: status가 completed / failed / cancelled 도달 시 clearInterval
+- **상태별 UI**: idle(준비 메시지), running(진행 표시), completed(성공 메시지 + 재실행 버튼), failed(에러 메시지 + 재시도 버튼), cancelled(취소 메시지 + 재실행 버튼)
+- **목표 검증 경고** (`goal-validation-warnings`): `execution.goal_validation.warnings` 항목 노란색 리스트 표시
+- **실행 중 비활성화**: running 상태에서 start 버튼 숨김 (조건부 렌더링)
+
+### API 서명 주의 사항
+
+- `startExecution`: `ExecuteRequest = { user_text: string }` — 프롬프트 설명과 달리 실제 API는 단순 user_text만 받음. 백엔드가 저장된 config/directives를 직접 사용하므로 빈 user_text 전달.
+- Execution 상태: executionSlice는 `'idle' | 'running' | 'completed' | 'failed' | 'cancelled'` 사용 (`'error'` 아님), API 응답의 `'pending'` → `'running'` 매핑 필요
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 | 결과 |
+|------------|----------|------|
+| `ConfigPanel.test.tsx` | 30 | ✅ PASS |
+| `ExecutionPanel.test.tsx` | 22 | ✅ PASS |
+| 기존 전체 (Step 39까지) | 254 | ✅ PASS (회귀 없음) |
+
+### Jest 결과
+
+```
+Test Suites: 13 passed, 13 total
+Tests:       306 passed, 306 total (신규 52 + 기존 254)
+```
+
+### TypeScript 검사 결과
+
+```
+npx tsc --noEmit → 오류 없음 (출력 없음)
+```
+
+### 주요 구현 노트
+
+- **combineReducers 해결**: ExecutionPanel 테스트에서 `configureStore`에 reducer 맵 + `preloadedState: any`를 동시에 사용 시 TypeScript 오버로드 해결 실패 문제 발생. `combineReducers`로 명시적 결합 후 단일 Reducer 함수로 전달하여 해결
+- **조건부 렌더링**: ConfigPanel의 모드별 필드는 `style={{ display }}` 대신 조건부 렌더링(`{mode === 'inspection' && ...}`) 사용 — `toBeInTheDocument()` 테스트가 DOM 존재 여부를 확인하므로 조건부 렌더링이 정확
+- **폴링 cleanup**: `useRef`로 interval ID 보관, `useEffect` return에서 `clearInterval` + `null` 초기화. 중지 후 재폴링 방지
+- **API pending 상태 매핑**: 백엔드 `ExecutionStatus.status`는 `'pending'`을 포함하지만 Redux 슬라이스는 `'idle'`에서 시작하고 `'pending'`이 없음. 폴링 응답의 `'pending'` → `'running'` 변환 처리
 
 ---
 

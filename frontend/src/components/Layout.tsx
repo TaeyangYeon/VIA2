@@ -14,6 +14,8 @@ import InputPanel from './panels/InputPanel';
 import ROICanvas from './ROICanvas';
 import EnginePanel from './panels/EnginePanel';
 import DirectivePanel from './panels/DirectivePanel';
+import ConfigPanel from './panels/ConfigPanel';
+import ExecutionPanel from './panels/ExecutionPanel';
 
 type PanelId = 'input' | 'roi' | 'engine' | 'directive' | 'config' | 'execution' | 'result';
 
@@ -47,8 +49,8 @@ function ActivePanel({ id }: { id: PanelId }) {
     case 'roi':       return <ROICanvas />;
     case 'engine':    return <EnginePanel />;
     case 'directive': return <DirectivePanel />;
-    case 'config':    return <PlaceholderPanel label="Config" />;
-    case 'execution': return <PlaceholderPanel label="Execution" />;
+    case 'config':    return <ConfigPanel />;
+    case 'execution': return <ExecutionPanel />;
     case 'result':    return <PlaceholderPanel label="Result" />;
   }
 }
