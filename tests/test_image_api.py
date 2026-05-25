@@ -575,3 +575,46 @@ async def test_upload_ok2_is_in_test_group():
             files={"file": ("OK_2.png", b"img", "image/png")},
         )
     assert response.json()["group"] == "test"
+
+
+# ── GET /images/{id}/file ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_image_file_returns_200_with_image_content():
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        upload = await client.post(
+            "/api/images/upload",
+            files={"file": ("OK_1.png", b"fake_image_bytes", "image/png")},
+        )
+        image_id = upload.json()["id"]
+        response = await client.get(f"/api/images/{image_id}/file")
+    assert response.status_code == 200
+    assert response.content == b"fake_image_bytes"
+    assert response.headers["content-type"].startswith("image/png")
+
+
+@pytest.mark.asyncio
+async def test_get_image_file_returns_404_for_unknown_id():
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/images/no-such-id/file")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_image_file_returns_404_when_file_missing_from_disk():
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        upload = await client.post(
+            "/api/images/upload",
+            files={"file": ("OK_1.png", b"fake_image_bytes", "image/png")},
+        )
+        data = upload.json()
+        image_id = data["id"]
+        Path(data["file_path"]).unlink()
+        response = await client.get(f"/api/images/{image_id}/file")
+    assert response.status_code == 404

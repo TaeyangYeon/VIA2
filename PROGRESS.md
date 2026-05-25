@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 37 (완료)
+## 현재 진행 단계: Step 38 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -51,7 +51,7 @@
 - [x] Step 35: Electron + React + TypeScript + TailwindCSS 초기화
 - [x] Step 36: Redux Store + API 클라이언트
 - [x] Step 37: 전체 레이아웃 + Input Panel
-- [ ] Step 38: ROI 드로잉 UI
+- [x] Step 38: ROI 드로잉 UI
 - [ ] Step 39: Engine 설정 + Directive Panel
 - [ ] Step 40: Config Panel + Execution Panel
 - [ ] Step 41: Result Panel (Blueprint Viewer)
@@ -68,6 +68,195 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 38 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 경로 | 역할 | 상태 |
+|-----------|------|------|
+| `frontend/src/hooks/useROIDrawing.ts` | Canvas 마우스 드로잉 로직 훅 | 신규 |
+| `frontend/src/components/ROICanvas.tsx` | ROI 드로잉 컴포넌트 | 신규 |
+| `frontend/src/__tests__/useROIDrawing.test.ts` | 훅 단위 테스트 | 신규 |
+| `frontend/src/__tests__/ROICanvas.test.tsx` | 컴포넌트 통합 테스트 | 신규 |
+| `frontend/src/components/Layout.tsx` | ROI 플레이스홀더 → ROICanvas 교체 | 수정 |
+| `PROGRESS.md` | 진행 기록 업데이트 | 수정 |
+
+### ROICanvas 컴포넌트 기능 목록
+
+- **이미지 표시**: Redux `images.analysis[0]` (첫 번째 analysis 이미지)를 HTML5 Canvas에 렌더링
+- **이미지 URL**: `http://localhost:8000/api/images/{id}/file` 패턴 사용
+- **Aspect ratio 보존**: `Math.min(canvasW/imgW, canvasH/imgH)` 스케일로 letterbox/pillarbox 처리
+- **ROI 드로잉**: 마우스 드래그(mousedown → mousemove → mouseup)로 직사각형 ROI 그리기
+- **ROI 오버레이**: 이미지 위에 반투명 다크 오버레이 + ROI 영역 원본 밝기 복원 + 흰색 점선 테두리 + 코너 핸들
+- **좌표 수동 편집**: x1/y1/x2/y2 number input으로 직접 조정 (드로잉 중 disabled)
+- **저장**: Save ROI 버튼 → `api.setRoi(roi)` POST + Redux `setRoi` dispatch
+- **삭제**: Delete 버튼 → `api.clearRoi()` DELETE + Redux `clearRoi` dispatch + localRoi 초기화
+- **Redux 초기화**: 마운트 시 `store.roi`(저장된 ROI)를 localRoi로 로드
+- **빈 상태**: analysis 이미지 없을 때 "Upload images first" 안내 UI (`roi-empty-state`)
+- **로딩 상태**: 이미지 로딩 중 스피너 (`roi-loading`)
+- **에러 상태**: 이미지 로드 실패 시 에러 메시지 (`roi-error`)
+
+### useROIDrawing 훅 인터페이스
+
+**export:**
+```typescript
+export interface DrawContext {
+  canvasWidth: number;
+  canvasHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+}
+
+export interface UseROIDrawingReturn {
+  isDrawing: boolean;
+  roi: ROICoordinates | null;  // { x1, y1, x2, y2 } — 항상 x1<x2, y1<y2
+  startDraw: (x: number, y: number, ctx: DrawContext) => void;
+  updateDraw: (x: number, y: number, ctx: DrawContext) => void;
+  endDraw: (x: number, y: number, ctx: DrawContext) => void;
+  clearROI: () => void;
+}
+```
+
+**매개변수:** x, y는 캔버스 display 좌표 (mouse event에서 얻은 canvas-relative 픽셀값)
+
+**반환값:**
+- `isDrawing`: mousedown 이후 mouseup 이전 드로잉 진행 중 여부
+- `roi`: 현재 ROI (이미지 원본 좌표계, integer, 항상 정규화됨)
+- `startDraw`: mousedown 시 호출 — isDrawing=true, roi 초기화
+- `updateDraw`: mousemove 시 호출 — roi 실시간 업데이트 (startRef가 없으면 no-op)
+- `endDraw`: mouseup 시 호출 — isDrawing=false, 최종 roi 확정
+- `clearROI`: ROI 삭제 — roi=null, isDrawing=false
+
+### 캔버스 좌표 변환 로직
+
+```
+scale = Math.min(canvasWidth / imageWidth, canvasHeight / imageHeight)
+displayW = imageWidth * scale
+displayH = imageHeight * scale
+offsetX = (canvasWidth - displayW) / 2    ← pillarboxing
+offsetY = (canvasHeight - displayH) / 2   ← letterboxing
+
+imageX = Math.round(clamp(0, imageWidth,  (canvasX - offsetX) / scale))
+imageY = Math.round(clamp(0, imageHeight, (canvasY - offsetY) / scale))
+```
+
+- 스케일: `Math.min()` 으로 캔버스에 완전히 맞는 최대 스케일 선택
+- 오프셋: 이미지를 캔버스 중앙에 배치 (letterbox/pillarbox)
+- 클램핑: 이미지 영역 밖의 마우스 좌표는 경계값으로 자동 클램프
+- 정수화: `Math.round()` 로 픽셀 단위 정수 보장
+- 정규화: `Math.min(start, end)` / `Math.max(start, end)` 로 x1<x2, y1<y2 보장
+
+**역변환 (canvas draw 시):**
+```
+canvasX = imageX * scale + offsetX
+canvasY = imageY * scale + offsetY
+```
+
+### ROI 오버레이 렌더링 전략
+
+```
+1. ctx.clearRect(0, 0, W, H)
+2. ctx.drawImage(img, offsetX, offsetY, displayW, displayH)   ← 이미지 전체
+3. ctx.fillStyle = 'rgba(0,0,0,0.45)'
+   ctx.fillRect(offsetX, offsetY, displayW, displayH)          ← 다크 오버레이
+4. ctx.drawImage(img, roi.x1,roi.y1,roiW,roiH, rx,ry,rw,rh)  ← ROI 영역 복원
+5. ctx.strokeRect(rx, ry, rw, rh)                              ← 흰 점선 테두리
+6. 4개 코너에 6×6px 흰색 사각형 핸들
+```
+
+### displayRoi 전략 (canvas 드로잉 vs 입력 편집)
+
+- **드로잉 중** (`isDrawing=true`): 캔버스는 훅의 `drawnRoi` 사용 (실시간 피드백)
+- **드로잉 완료** (`isDrawing=false`): 캔버스는 `localRoi` 사용 (수동 편집 반영)
+- **isDrawing 전환 시**: `useEffect([isDrawing, drawnRoi])` 로 `drawnRoi → localRoi` 동기화
+- **수동 편집**: `localRoi` 직접 업데이트 → 즉시 캔버스 리드로
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 | 결과 |
+|------------|----------|------|
+| `useROIDrawing.test.ts` | 30 | PASS |
+| `ROICanvas.test.tsx` | 24 | PASS |
+| `Layout.test.tsx` | 12 | PASS (회귀 없음) |
+| `InputPanel.test.tsx` | 32 | PASS (회귀 없음) |
+| `App.test.tsx` | 4 | PASS (회귀 없음) |
+| `store.test.ts` | 11 | PASS (회귀 없음) |
+| `slices.test.ts` | 60 | PASS (회귀 없음) |
+| `api.test.ts` | 30 | PASS (회귀 없음) |
+| `design-tokens.test.ts` | 11 | PASS (회귀 없음) |
+| **합계** | **214** | **전체 PASS** |
+
+### useROIDrawing 테스트 분류 (30개)
+
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 초기 상태 (isDrawing=false, roi=null, 함수 노출) | 3 |
+| startDraw (isDrawing=true, roi 초기화) | 2 |
+| updateDraw (roi 업데이트, no-op 검증) | 3 |
+| endDraw (isDrawing=false, roi 확정, no-op 검증) | 3 |
+| clearROI (roi=null, isDrawing=false) | 2 |
+| 좌표 변환 (스케일, Math.round, 1:1) | 3 |
+| pillarboxing 오프셋 검증 | 1 |
+| letterboxing 오프셋 검증 | 1 |
+| 경계 클램핑 (음수, 초과, pillarbox 좌우) | 4 |
+| ROI 정규화 (우→좌, 하→상) | 2 |
+| 좌표 정수화 검증 | 1 |
+| 합계 | 25 → 실제 30 |
+
+### ROICanvas 테스트 분류 (24개)
+
+| 카테고리 | 테스트 수 |
+|---------|---------|
+| 빈 상태 (이미지 없음, 텍스트, canvas 미노출) | 4 |
+| 로딩 상태 (스피너 노출, canvas 미노출) | 2 |
+| 로드 완료 (canvas, 버튼, getContext 호출) | 6 |
+| 에러 상태 (에러 노출, 메시지, canvas 미노출) | 3 |
+| ROI 좌표 패널 (x1/y1/x2/y2 입력값) | 5 |
+| Save 버튼 (api.setRoi 호출, redux 반영) | 2 |
+| Delete 버튼 (api.clearRoi 호출, redux 초기화, 패널 숨김) | 3 |
+| 수동 입력 (x1, y2 변경) | 2 |
+| 이미지 URL (id 포함, 백엔드 주소) | 2 |
+| 레이아웃 통합 (roi-panel testid) | 1 |
+
+### Jest 결과
+
+```
+Test Suites: 9 passed, 9 total
+Tests:       214 passed, 214 total
+Snapshots:   0 total
+Time:        2.66 s
+```
+
+### TypeScript 체크 결과
+
+```
+npx tsc --noEmit → 오류 0개
+```
+
+### 이슈 및 해결사항
+
+1. **`import React`의 TS6133 오류**: ROICanvas.test.tsx에서 `import React from 'react'` 를 추가했으나 React 18 + `jsx: react-jsx` 환경에서 미사용으로 TS 오류. import 제거로 해결.
+
+2. **JSDOM Canvas 제약**: `HTMLCanvasElement.prototype.getContext`가 JSDOM에서 null 반환. `jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx)` 패턴으로 해결.
+
+3. **JSDOM Image 로딩 불가**: `new Image()` 의 `onload`/`onerror`가 JSDOM에서 자동 발화되지 않음. 컨트롤 가능한 `MockImage` 클래스를 구현하여 `currentMockImage.onload?.()` 로 수동 발화. `ControllableMockImage` 패턴으로 loading/loaded/error 상태를 독립적으로 테스트.
+
+4. **displayRoi 전략 설계**: 드로잉 중 실시간 피드백과 수동 편집의 공존 문제. `isDrawing ? drawnRoi : localRoi` 조건부 선택 + `useEffect([isDrawing, drawnRoi])` 동기화로 해결. 드로잉 완료 시 localRoi 자동 업데이트.
+
+5. **canvas.width/height 기본값**: JSDOM에서 `container.clientWidth/Height = 0` 이므로 resize 효과가 없음. 캔버스에 `width={800} height={500}` HTML 속성을 기본값으로 설정하여 JSDOM 테스트에서도 유효한 치수 보장.
+
+6. **startRef vs useState**: `startPoint`를 useState 대신 useRef로 관리 — 렌더링 트리거 없이 mousedown 시작 좌표 유지, updateDraw/endDraw의 클로저 스테일 문제 방지.
+
+### 주의사항
+
+- ROICanvas는 `http://localhost:8000/api/images/{id}/file` URL을 사용. 백엔드가 이 경로로 이미지를 서빙해야 함.
+- `canvas.getContext('2d')` 가 null을 반환하면 드로잉 전체가 no-op (로딩 완료 후 에러 미표시).
+- 드로잉 중 수동 입력 필드는 `disabled` 처리되어 좌표 충돌 방지.
+- Layout test에서 ROI 패널 클릭 시 ROICanvas 렌더링: 이미지가 없는 빈 store 상태이므로 empty state만 표시, canvas 초기화 없음 → 회귀 없음.
+- InputPanel의 기존 `act()` 경고는 이번 Step과 무관하며 이전부터 존재.
 
 ---
 

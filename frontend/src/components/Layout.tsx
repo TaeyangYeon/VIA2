@@ -11,6 +11,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import InputPanel from './panels/InputPanel';
+import ROICanvas from './ROICanvas';
 
 type PanelId = 'input' | 'roi' | 'engine' | 'directive' | 'config' | 'execution' | 'result';
 
@@ -41,7 +42,7 @@ function PlaceholderPanel({ label }: { label: string }) {
 function ActivePanel({ id }: { id: PanelId }) {
   switch (id) {
     case 'input':     return <InputPanel />;
-    case 'roi':       return <PlaceholderPanel label="ROI" />;
+    case 'roi':       return <ROICanvas />;
     case 'engine':    return <PlaceholderPanel label="Engine" />;
     case 'directive': return <PlaceholderPanel label="Directive" />;
     case 'config':    return <PlaceholderPanel label="Config" />;
