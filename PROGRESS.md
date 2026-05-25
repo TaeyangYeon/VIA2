@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 35 (완료)
+## 현재 진행 단계: Step 36 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -49,7 +49,7 @@
 
 ## Phase 6: 메인 프론트엔드
 - [x] Step 35: Electron + React + TypeScript + TailwindCSS 초기화
-- [ ] Step 36: Redux Store + API 클라이언트
+- [x] Step 36: Redux Store + API 클라이언트
 - [ ] Step 37: 전체 레이아웃 + Input Panel
 - [ ] Step 38: ROI 드로잉 UI
 - [ ] Step 39: Engine 설정 + Directive Panel
@@ -68,6 +68,213 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 36 완료 내역
+
+### 생성된 파일
+
+| 파일 경로 | 역할 |
+|-----------|------|
+| `frontend/src/services/types.ts` | 전체 TypeScript 인터페이스/타입 정의 |
+| `frontend/src/services/api.ts` | axios 인스턴스 + 22개 API 함수 |
+| `frontend/src/store/slices/projectSlice.ts` | project 슬라이스 |
+| `frontend/src/store/slices/engineSlice.ts` | engine 슬라이스 |
+| `frontend/src/store/slices/imagesSlice.ts` | images 슬라이스 |
+| `frontend/src/store/slices/roiSlice.ts` | roi 슬라이스 |
+| `frontend/src/store/slices/configSlice.ts` | config 슬라이스 |
+| `frontend/src/store/slices/directivesSlice.ts` | directives 슬라이스 |
+| `frontend/src/store/slices/executionSlice.ts` | execution 슬라이스 |
+| `frontend/src/store/slices/resultSlice.ts` | result 슬라이스 |
+| `frontend/src/store/slices/lightTestSlice.ts` | light_test 슬라이스 |
+| `frontend/src/store/slices/logsSlice.ts` | logs 슬라이스 |
+| `frontend/src/store/index.ts` | configureStore + RootState + AppDispatch + typed hooks |
+| `frontend/src/__tests__/store.test.ts` | 스토어 구성 및 초기 상태 테스트 (11개) |
+| `frontend/src/__tests__/slices.test.ts` | 슬라이스 리듀서/액션 테스트 (60개) |
+| `frontend/src/__tests__/api.test.ts` | API 함수 존재 및 엔드포인트 호출 테스트 (30개) |
+
+### 설치된 패키지
+
+```
+@reduxjs/toolkit  (최신)
+react-redux       (최신)
+axios             (최신)
+```
+
+### 슬라이스 이름 및 초기 상태
+
+#### 1. `project` (projectSlice)
+```typescript
+{ name: '', created_at: '' }
+```
+액션: `setProject(ProjectState)`
+
+#### 2. `engine` (engineSlice)
+```typescript
+{
+  mode: 'local',
+  local_ollama_url: 'http://127.0.0.1:11434',
+  remote_url: null,
+  remote_type: 'colab',
+  remote_auth_token: null,
+  model_name: 'qwen2.5-coder:7b',
+}
+```
+액션: `setEngine(EngineSettings)`
+> ⚠️ PLAN.md와 차이: 실제 백엔드 모델(EngineSettings)은 `local_url` 대신 `local_ollama_url`, 그리고 `remote_auth_token`, `model_name` 필드 추가.
+
+#### 3. `images` (imagesSlice)
+```typescript
+{ analysis: ImageMetadata[], test: ImageMetadata[] }
+```
+액션: `addImage(ImageMetadata)`, `setAnalysisImages(ImageMetadata[])`, `setTestImages(ImageMetadata[])`, `removeImage(id: string)`, `clearImages()`
+> ⚠️ PLAN.md와 차이: `ImageFile` 대신 실제 백엔드 `ImageMetadata` 사용. 필드: `id`, `original_filename`, `label`, `index`, `file_size`, `upload_timestamp`, `file_path`, `group`. (`filename`/`url`/`category` 없음)
+
+#### 4. `roi` (roiSlice)
+```typescript
+null  // ROICoordinates | null
+```
+액션: `setRoi(ROICoordinates)`, `clearRoi()`
+
+#### 5. `config` (configSlice)
+```typescript
+{
+  mode: 'inspection',
+  max_iteration: 3,
+  success_criteria: { accuracy: null, fp_rate: null, fn_rate: null, coord_error: null },
+}
+```
+액션: `setConfig(InspectionConfig)`
+
+#### 6. `directives` (directivesSlice)
+```typescript
+{ orchestrator: '', spec: '', image_analysis: '', depth: '', material: '',
+  pipeline_composer: '', vision_judge: '', inspection_plan: '', test: '' }
+```
+액션: `setDirectives(AgentDirectives)`, `updateDirective({ key, value })`
+
+#### 7. `execution` (executionSlice)
+```typescript
+{ status: 'idle', execution_id: null, current_agent: null,
+  current_iteration: 0, goal_validation: null, progress: 0 }
+```
+액션: `setExecutionStatus(status)`, `setExecutionId(id)`, `setCurrentAgent(agent)`, `setCurrentIteration(n)`, `setGoalValidation(gv)`, `setProgress(n)`, `setExecution(Partial<ExecutionState>)`, `resetExecution()`
+
+#### 8. `result` (resultSlice)
+```typescript
+{ summary: null, pipeline: null, inspection_plan: null, blueprint_svg: null,
+  parameter_sheet: null, metrics: null, item_results: null,
+  lighting_suggestions: null, improvement_suggestions: null,
+  decision: null, decision_reason: null }
+```
+액션: `setResult(ExecutionResult)`, `clearResult()`
+
+#### 9. `light_test` (lightTestSlice)
+```typescript
+{ image: null, lights: [], camera_view: 'front', rendered_result: null }
+```
+액션: `setLightTestImage(ImageMetadata | null)`, `addLight(LightConfig)`, `removeLight(id)`, `updateLight({ id, changes })`, `setCameraView('front' | 'top')`, `setRenderedResult(string | null)`, `clearLightTest()`
+
+#### 10. `logs` (logsSlice)
+```typescript
+[]  // LogEntry[]
+```
+액션: `addLog(LogEntry)`, `setLogs(LogEntry[])`, `clearLogs()`
+
+### TypeScript 타입 이름 (frontend/src/services/types.ts)
+
+| 타입명 | 설명 |
+|--------|------|
+| `EngineSettings` | 백엔드 EngineSettings 미러 |
+| `ImageMetadata` | 백엔드 ImageMetadata 미러 |
+| `ROICoordinates` | 백엔드 ROICoordinates 미러 |
+| `SuccessCriteria` | 백엔드 SuccessCriteria 미러 |
+| `InspectionConfig` | 백엔드 InspectionConfig 미러 |
+| `ConfigSaveResponse` | InspectionConfig + warnings 확장 |
+| `AgentDirectives` | 백엔드 AgentDirectives 미러 |
+| `ExecuteRequest` | POST /api/execute 요청 바디 |
+| `GoalValidation` | { valid: boolean, warnings: string[] } |
+| `ExecutionResult` | 실행 결과 데이터 |
+| `ExecutionStatus` | 실행 상태 + 선택적 result |
+| `LogEntry` | { timestamp, agent, level, message } |
+| `LogsResponse` | { logs: LogEntry[], total: number } |
+| `LightPosition` | { x, y, z: number } |
+| `LightColor` | { r, g, b: number } |
+| `LightConfig` | 조명 설정 (frontend-only) |
+| `ProjectState` | { name, created_at } (frontend-only) |
+
+### API 함수 시그니처 (frontend/src/services/api.ts)
+
+baseURL: `http://localhost:8000`
+
+| 함수명 | HTTP | 경로 | 반환 타입 |
+|--------|------|------|-----------|
+| `getHealth()` | GET | `/health` | `{ status, version }` |
+| `getEngine()` | GET | `/api/engine` | `EngineSettings` |
+| `updateEngine(settings)` | POST | `/api/engine` | `EngineSettings` |
+| `uploadImage(file)` | POST | `/api/images/upload` | `ImageMetadata` |
+| `getImages(group?)` | GET | `/api/images` | `ImageMetadata[]` |
+| `clearAllImages()` | DELETE | `/api/images` | `{ message }` |
+| `getImageById(id)` | GET | `/api/images/{id}` | `ImageMetadata` |
+| `deleteImage(id)` | DELETE | `/api/images/{id}` | `{ message }` |
+| `getRoi()` | GET | `/api/roi` | `ROICoordinates \| null` |
+| `setRoi(roi)` | POST | `/api/roi` | `ROICoordinates` |
+| `clearRoi()` | DELETE | `/api/roi` | `{ message }` |
+| `getConfig()` | GET | `/api/config` | `InspectionConfig` |
+| `saveConfig(config)` | POST | `/api/config` | `ConfigSaveResponse` |
+| `getDirectives()` | GET | `/api/directives` | `AgentDirectives` |
+| `saveDirectives(directives)` | POST | `/api/directives` | `AgentDirectives` |
+| `startExecution(req)` | POST | `/api/execute` | `{ execution_id, status }` |
+| `listExecutions()` | GET | `/api/execute` | `ExecutionStatus[]` |
+| `getExecution(id)` | GET | `/api/execute/{id}` | `ExecutionStatus` |
+| `cancelExecution(id)` | DELETE | `/api/execute/{id}` | `{ message, execution_id }` |
+| `getLogAgents()` | GET | `/api/logs/agents` | `{ agents: string[] }` |
+| `getLogs(params?)` | GET | `/api/logs` | `LogsResponse` |
+| `clearLogs()` | DELETE | `/api/logs` | `{ cleared: boolean }` |
+
+> ⚠️ PLAN.md와 차이: 취소는 `POST /api/execute/{id}/cancel` 아닌 `DELETE /api/execute/{id}`, 상태 조회는 `/api/execute/{id}/status` 아닌 `/api/execute/{id}`. ROI에 DELETE 엔드포인트 추가. 로그 응답은 `{ logs, total }` 래핑 형식.
+
+### 스토어 설정 (frontend/src/store/index.ts)
+
+```typescript
+export const store = configureStore({ reducer: { project, engine, images, roi, config, directives, execution, result, light_test, logs } })
+export type RootState = ReturnType<typeof store.getState>
+export type AppDispatch = typeof store.dispatch
+export const useAppDispatch: () => AppDispatch
+export const useAppSelector: TypedUseSelectorHook<RootState>
+```
+
+### 테스트 결과
+
+| 테스트 파일 | 테스트 수 | 결과 |
+|------------|----------|------|
+| `store.test.ts` | 11 | PASS |
+| `slices.test.ts` | 60 | PASS |
+| `api.test.ts` | 30 | PASS |
+| (기존 유지) design-tokens.test.ts | 12 | PASS |
+| (기존 유지) App.test.tsx | 3 | PASS |
+| **합계** | **116** | **전체 PASS** |
+
+```
+Test Suites: 5 passed, 5 total
+Tests:       116 passed, 116 total
+Time:        1.326s
+```
+
+TypeScript 오류: 0개 (`npx tsc --noEmit` 통과)
+
+### 이슈 및 해결
+
+1. **PLAN.md vs 실제 백엔드 불일치**: 백엔드 모델 파일(`backend/models/`)을 직접 읽어 실제 필드를 확인. `EngineSettings`의 `local_url` → `local_ollama_url`, `ImageMetadata`의 `filename`/`url`/`category` 없음(대신 `original_filename`/`file_path`/`group`/`label`/`index`/`file_size`/`upload_timestamp` 사용), 취소 엔드포인트가 `POST` 아닌 `DELETE`.
+
+2. **axios 모킹 전략**: `jest.mock('axios', () => {...})` 팩토리 패턴을 사용하여 모듈 로드 시점에 axios.create가 mock 인스턴스를 반환하도록 설정. `mockAxiosCreate.mock.results[0]?.value ?? mockAxiosCreate()` 패턴으로 테스트 내에서 mock 인스턴스 참조.
+
+3. **roiSlice 초기 상태**: `null as RoiState` 캐스팅으로 `ROICoordinates | null` 타입에서 `null` 초기값 TypeScript 오류 방지.
+
+4. **logsSlice 초기 상태**: `[] as LogEntry[]` 캐스팅으로 배열 슬라이스 타입 추론 처리.
+
+5. **light_test 슬라이스명**: Redux key를 `light_test`(언더스코어)로 설정 — PLAN.md 명세 준수.
 
 ---
 

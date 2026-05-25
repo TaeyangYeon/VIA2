@@ -12,9 +12,12 @@
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.12.0",
+    "axios": "^1.16.1",
     "lucide-react": "^0.446.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-redux": "^9.3.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -44,7 +47,9 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": ["<rootDir>/src/jest.setup.ts"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/jest.setup.ts"
+    ],
     "moduleNameMapper": {
       "\\.(css|less|scss|sass)$": "<rootDir>/src/__mocks__/styleMock.js"
     },
