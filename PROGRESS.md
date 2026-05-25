@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 36 (완료)
+## 현재 진행 단계: Step 37 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -50,7 +50,7 @@
 ## Phase 6: 메인 프론트엔드
 - [x] Step 35: Electron + React + TypeScript + TailwindCSS 초기화
 - [x] Step 36: Redux Store + API 클라이언트
-- [ ] Step 37: 전체 레이아웃 + Input Panel
+- [x] Step 37: 전체 레이아웃 + Input Panel
 - [ ] Step 38: ROI 드로잉 UI
 - [ ] Step 39: Engine 설정 + Directive Panel
 - [ ] Step 40: Config Panel + Execution Panel
@@ -68,6 +68,104 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 37 완료 내역
+
+### 생성된 파일
+
+| 파일 경로 | 역할 |
+|-----------|------|
+| `frontend/src/components/Layout.tsx` | 사이드바 + 메인 워크스페이스 레이아웃 |
+| `frontend/src/components/panels/InputPanel.tsx` | 이미지 업로드/관리 패널 |
+| `frontend/src/__tests__/Layout.test.tsx` | Layout 컴포넌트 테스트 (12개) |
+| `frontend/src/__tests__/InputPanel.test.tsx` | InputPanel 컴포넌트 테스트 (32개) |
+| `frontend/src/App.tsx` | Layout + Provider 통합으로 교체 |
+| `frontend/src/__tests__/App.test.tsx` | App 테스트를 새 Layout 구조에 맞게 업데이트 |
+
+### Layout 구조 설명
+
+- **사이드바**: 기본 너비 `280px` (`w-[280px]`), 축소 시 `56px` (`w-14`)
+- **Collapse 동작**: `sidebar-toggle` 버튼 클릭 → `collapsed` 상태 토글. 축소 시 레이블에 `style={{ display: 'none' }}` 적용 (JSDOM `toBeVisible()` 호환)
+- **Active 인디케이터**: 활성 패널 좌측에 흰색 2px 세로 바 (`bg-accent-action`)
+- **기본 활성 패널**: `input` (InputPanel 렌더)
+- **Nav 항목**: Input, ROI, Engine, Directive, Config, Execution, Result (lucide-react 아이콘)
+- **메인 워크스페이스**: `flex-1 overflow-hidden`, 활성 패널에 따라 동적 렌더링
+
+### InputPanel 기능 목록
+
+- **드래그 & 드롭**: `dragenter` / `dragleave` / `dragover` / `drop` 이벤트 처리, `data-dragging` 속성으로 시각 피드백
+- **파일 브라우저**: 숨겨진 `<input type="file">` + `ref` 클릭 트리거, `accept="image/png,image/jpeg,image/bmp,image/tiff"` + `multiple`
+- **파일명 유효성 검사** (클라이언트 즉시 피드백):
+  - 정규식: `/^(ok|ng)_[1-9]\d*\.(png|jpg|jpeg|bmp|tiff)$/i`
+  - 유효: `OK_1.png`, `NG_3.jpg`, `ok_2.PNG`, `ng_1.bmp`, `OK_10.jpeg`
+  - 무효: `test.png`, `OK.png`, `NG_0.png` (index ≥ 1 필수), `OK_abc.png`
+  - 오류 시 `validation-error` testid로 메시지 표시
+- **썸네일 그리드**: 2열 그리드, 각 썸네일에 레이블(OK/NG) + 파일명 + 삭제 버튼
+- **이미지 수 요약**: `OK: N / NG: N` 카운터 (`count-summary` testid)
+- **Clear All 버튼**: 이미지가 있을 때만 표시 (`clear-all-btn` testid)
+- **빈 상태**: 이미지 없을 때 `empty-state` testid 안내 UI
+- **로딩 상태**: 업로드 중 `upload-loading` testid 스피너
+- **오류 상태**: 업로드/삭제 실패 시 `upload-error` testid 메시지
+
+### 사용된 컴포넌트/훅/아이콘
+
+**훅:** `useAppDispatch`, `useAppSelector`, `useState`, `useEffect`, `useRef`, `useCallback`, `useMemo`
+
+**Redux 액션:** `addImage`, `removeImage`, `clearImages`, `setAnalysisImages` (imagesSlice)
+
+**API 함수:** `uploadImage`, `getImages`, `deleteImage`, `clearAllImages`
+
+**lucide-react 아이콘:**
+- Layout: `Image`, `Crop`, `Cpu`, `FileText`, `Settings`, `Play`, `BarChart2`, `ChevronLeft`, `ChevronRight`
+- InputPanel: `Upload`, `X`, `Trash2`, `Image`, `AlertCircle`, `Loader2`, `FolderOpen`
+
+**선택자 최적화:** `useAppSelector(s => s.images.analysis)` + `useAppSelector(s => s.images.test)` + `useMemo` 결합 — 매 렌더마다 새 배열 생성 방지
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 | 결과 |
+|------------|----------|------|
+| `Layout.test.tsx` | 12 | PASS |
+| `InputPanel.test.tsx` | 32 | PASS |
+| `App.test.tsx` | 4 | PASS (업데이트) |
+| `store.test.ts` | 11 | PASS |
+| `slices.test.ts` | 60 | PASS |
+| `api.test.ts` | 30 | PASS |
+| `design-tokens.test.ts` | 11 | PASS |
+| **합계** | **160** | **전체 PASS** |
+
+### jest 결과
+
+```
+Test Suites: 7 passed, 7 total
+Tests:       160 passed, 160 total
+Snapshots:   0 total
+Time:        2.123 s
+```
+
+### TypeScript 체크 결과
+
+```
+npx tsc --noEmit → 오류 0개
+```
+
+### 이슈 및 해결사항
+
+1. **useAppSelector 배열 참조 문제**: `s => [...s.images.analysis, ...s.images.test]`는 매 렌더마다 새 배열을 생성하여 react-redux의 "selector returned different result" 경고 발생. 두 개의 개별 selector + `useMemo`로 결합하여 해결.
+
+2. **JSDOM CSS 클래스 미적용**: `opacity-0 w-0` TailwindCSS 클래스는 JSDOM에서 처리되지 않아 `toBeVisible()` 테스트 실패. `style={{ display: 'none' }}`으로 변경하여 JSDOM이 인식하는 visibility 제어 방식으로 전환.
+
+3. **App.test.tsx 회귀**: App이 Layout으로 교체되면서 기존 "Vision Intelligence Agent" 텍스트 테스트 실패. App 테스트를 새 구조(sidebar, main-workspace, VIA2 브랜드)에 맞게 업데이트.
+
+4. **미사용 `formatBytes` 함수**: InputPanel에서 파일 크기 표시를 구현하지 않아 `TS6133` 오류 발생. 함수 제거로 해결.
+
+### 주의사항
+
+- `InputPanel`의 `useEffect`에서 `getImages()` 후 dispatch가 act() 래핑 없이 실행되어 테스트에서 `console.error` 경고 발생. 실제 기능에는 영향 없으며 테스트는 모두 통과함.
+- 사이드바 ROI/Engine/Directive/Config/Execution/Result 패널은 플레이스홀더로 구현 (다음 Step에서 구현 예정).
+- 썸네일의 이미지 미리보기는 현재 아이콘으로 표시됨 — 실제 `<img>` 미리보기는 백엔드 서버가 이미지를 서빙할 때 추가 가능.
 
 ---
 
