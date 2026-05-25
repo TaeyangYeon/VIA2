@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 38 (완료)
+## 현재 진행 단계: Step 39 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -52,7 +52,7 @@
 - [x] Step 36: Redux Store + API 클라이언트
 - [x] Step 37: 전체 레이아웃 + Input Panel
 - [x] Step 38: ROI 드로잉 UI
-- [ ] Step 39: Engine 설정 + Directive Panel
+- [x] Step 39: Engine 설정 + Directive Panel
 - [ ] Step 40: Config Panel + Execution Panel
 - [ ] Step 41: Result Panel (Blueprint Viewer)
 
@@ -68,6 +68,73 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 39 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 경로 | 역할 | 상태 |
+|-----------|------|------|
+| `frontend/src/components/panels/EnginePanel.tsx` | AI Engine 설정 UI (Local/Remote 모드 전환, 저장, 연결 테스트) | 신규 |
+| `frontend/src/components/panels/DirectivePanel.tsx` | 9개 에이전트 Directive 편집 UI (카드 접기/펼치기, 전체 저장/초기화) | 신규 |
+| `frontend/src/__tests__/EnginePanel.test.tsx` | EnginePanel 컴포넌트 단위 테스트 (22개) | 신규 |
+| `frontend/src/__tests__/DirectivePanel.test.tsx` | DirectivePanel 컴포넌트 단위 테스트 (18개) | 신규 |
+| `frontend/src/components/Layout.tsx` | Engine/Directive 플레이스홀더 → 실제 컴포넌트 교체 | 수정 |
+| `PROGRESS.md` | 진행 기록 업데이트 | 수정 |
+
+### EnginePanel 기능 목록
+
+- **모드 토글**: Local (Ollama) / Remote 라디오 버튼 전환
+- **Local 모드 필드**: `local_ollama_url` 입력, `model_name` 입력
+- **Remote 모드 필드**: `remote_type` select (colab/azure/custom), `remote_url` 입력, `remote_auth_token` 패스워드 입력
+- **연결 테스트**: "Test Connection" 버튼 → `getEngine()` 호출 → 성공/실패 피드백 (`connection-success` / `connection-error`)
+- **저장**: "Save" 버튼 → `updateEngine()` POST + Redux `setEngine` dispatch
+- **저장 상태**: 저장 중 `save-loading` 인디케이터, 완료 후 `save-success` / `save-error` 피드백 (3~4초 자동 소멸)
+- **Redux 초기화**: 마운트 시 `store.engine` 값으로 필드 초기화
+- **UI 스타일**: glass morphism (bg-white/5 backdrop-blur border-white/10), 중성 다크 테마, 전환 transition-all duration-150
+
+### DirectivePanel 기능 목록
+
+- **9개 에이전트 카드**: orchestrator, spec, image_analysis, depth, material, pipeline_composer, vision_judge, inspection_plan, test
+- **에이전트 레이블**: Orchestrator, Spec Agent, Image Analysis, Depth Agent, Material Agent, Pipeline Composer, Vision Judge, Inspection Plan, Test Agent
+- **카드 접기/펼치기**: 헤더 클릭으로 토글, 기본값 전체 접힘 (`style={{ display: 'none' }}` — JSDOM 호환)
+- **빈 값 표시**: 값이 비어있으면 "auto" 힌트 표시
+- **텍스트 미리보기**: 값이 있으면 헤더에 40자 축약 미리보기
+- **Save All**: `saveDirectives()` POST + Redux `setDirectives` dispatch, 저장 중 `save-loading` 인디케이터
+- **Clear All**: 모든 필드를 빈 문자열로 리셋 (API 호출 없음)
+- **성공/에러 피드백**: `save-success` / `save-error` (3~4초 자동 소멸)
+- **Redux 초기화**: 마운트 시 `store.directives` 값으로 필드 초기화
+- **로컬 상태**: `useState<AgentDirectives>` 로 로컬 편집, Save All 시 Redux 동기화
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 | 결과 |
+|------------|----------|------|
+| `EnginePanel.test.tsx` | 22 | ✅ PASS |
+| `DirectivePanel.test.tsx` | 18 | ✅ PASS |
+| 기존 전체 (Step 38까지) | 214 | ✅ PASS (회귀 없음) |
+
+### Jest 결과
+
+```
+Test Suites: 11 passed, 11 total
+Tests:       254 passed, 254 total (신규 40 + 기존 214)
+Time:        ~3.2s
+```
+
+### TypeScript 검사 결과
+
+```
+npx tsc --noEmit → 오류 없음 (출력 없음)
+```
+
+### 주요 구현 노트
+
+- **JSDOM 호환 접기**: TailwindCSS `hidden` 클래스 대신 `style={{ display: isExpanded ? 'block' : 'none' }}` 사용 — JSDOM은 Tailwind 클래스를 실제로 적용하지 않으므로 `toBeVisible()` 테스트가 실패함. `style` 인라인은 JSDOM에서 정확히 동작함
+- **로컬 상태 vs Redux**: 편집 중에는 로컬 `useState`로 관리하고, Save 성공 시에만 Redux 동기화 (불필요한 Redux 업데이트 방지)
+- **updateEngine 시그니처**: `api.ts`에서 `updateEngine(settings: EngineSettings)`는 `Partial`이 아닌 전체 객체를 받으므로 `buildSettings()`로 전체 EngineSettings 구성 후 전달
 
 ---
 

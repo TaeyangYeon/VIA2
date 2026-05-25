@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import InputPanel from './panels/InputPanel';
 import ROICanvas from './ROICanvas';
+import EnginePanel from './panels/EnginePanel';
+import DirectivePanel from './panels/DirectivePanel';
 
 type PanelId = 'input' | 'roi' | 'engine' | 'directive' | 'config' | 'execution' | 'result';
 
@@ -43,8 +45,8 @@ function ActivePanel({ id }: { id: PanelId }) {
   switch (id) {
     case 'input':     return <InputPanel />;
     case 'roi':       return <ROICanvas />;
-    case 'engine':    return <PlaceholderPanel label="Engine" />;
-    case 'directive': return <PlaceholderPanel label="Directive" />;
+    case 'engine':    return <EnginePanel />;
+    case 'directive': return <DirectivePanel />;
     case 'config':    return <PlaceholderPanel label="Config" />;
     case 'execution': return <PlaceholderPanel label="Execution" />;
     case 'result':    return <PlaceholderPanel label="Result" />;
