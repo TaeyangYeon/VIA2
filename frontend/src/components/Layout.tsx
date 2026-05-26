@@ -16,6 +16,7 @@ import EnginePanel from './panels/EnginePanel';
 import DirectivePanel from './panels/DirectivePanel';
 import ConfigPanel from './panels/ConfigPanel';
 import ExecutionPanel from './panels/ExecutionPanel';
+import ResultPanel from './panels/ResultPanel';
 
 type PanelId = 'input' | 'roi' | 'engine' | 'directive' | 'config' | 'execution' | 'result';
 
@@ -35,14 +36,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'result',    label: 'Result',    icon: <BarChart2  size={18} /> },
 ];
 
-function PlaceholderPanel({ label }: { label: string }) {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <p className="text-text-disabled text-sm">{label} panel — coming soon</p>
-    </div>
-  );
-}
-
 function ActivePanel({ id }: { id: PanelId }) {
   switch (id) {
     case 'input':     return <InputPanel />;
@@ -51,7 +44,7 @@ function ActivePanel({ id }: { id: PanelId }) {
     case 'directive': return <DirectivePanel />;
     case 'config':    return <ConfigPanel />;
     case 'execution': return <ExecutionPanel />;
-    case 'result':    return <PlaceholderPanel label="Result" />;
+    case 'result':    return <ResultPanel />;
   }
 }
 

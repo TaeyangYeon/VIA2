@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 40 (완료)
+## 현재 진행 단계: Step 41 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -54,7 +54,7 @@
 - [x] Step 38: ROI 드로잉 UI
 - [x] Step 39: Engine 설정 + Directive Panel
 - [x] Step 40: Config Panel + Execution Panel
-- [ ] Step 41: Result Panel (Blueprint Viewer)
+- [x] Step 41: Result Panel (Blueprint Viewer)
 
 ## Phase 7: Light Test 윈도우
 - [ ] Step 42: Light Test 윈도우 + 듀얼 뷰 레이아웃
@@ -209,6 +209,128 @@ npx tsc --noEmit → 오류 없음 (출력 없음)
 - **조건부 렌더링**: ConfigPanel의 모드별 필드는 `style={{ display }}` 대신 조건부 렌더링(`{mode === 'inspection' && ...}`) 사용 — `toBeInTheDocument()` 테스트가 DOM 존재 여부를 확인하므로 조건부 렌더링이 정확
 - **폴링 cleanup**: `useRef`로 interval ID 보관, `useEffect` return에서 `clearInterval` + `null` 초기화. 중지 후 재폴링 방지
 - **API pending 상태 매핑**: 백엔드 `ExecutionStatus.status`는 `'pending'`을 포함하지만 Redux 슬라이스는 `'idle'`에서 시작하고 `'pending'`이 없음. 폴링 응답의 `'pending'` → `'running'` 변환 처리
+
+---
+
+## Step 41 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 경로 | 역할 | 상태 |
+|-----------|------|------|
+| `frontend/src/components/panels/ResultPanel.tsx` | 결과 패널 컨테이너 — 빈 상태, Decision/Summary/Blueprint/Metrics/Lighting/Improvement 오케스트레이션 | 신규 |
+| `frontend/src/components/BlueprintViewer.tsx` | SVG 블루프린트 렌더러 — 줌/팬/리셋/Fit 컨트롤, data-node-id 노드 클릭 감지 | 신규 |
+| `frontend/src/components/ParameterSheet.tsx` | 노드 파라미터 사이드 패널 — isOpen 가시성 제어, 키-값 표시, 닫기 버튼 | 신규 |
+| `frontend/src/components/MetricsChart.tsx` | 검사 결과 테이블 — pass/fail 색상 코딩, FP/FN CSS 바 시각화, 요약 행 | 신규 |
+| `frontend/src/components/LightingSuggestion.tsx` | 조명 제안 카드 리스트 — 문자열 배열 렌더링, Open Light Test 버튼 | 신규 |
+| `frontend/src/__tests__/ResultPanel.test.tsx` | ResultPanel 단위 테스트 (18개) | 신규 |
+| `frontend/src/__tests__/BlueprintViewer.test.tsx` | BlueprintViewer 단위 테스트 (17개) | 신규 |
+| `frontend/src/__tests__/ParameterSheet.test.tsx` | ParameterSheet 단위 테스트 (12개) | 신규 |
+| `frontend/src/__tests__/MetricsChart.test.tsx` | MetricsChart 단위 테스트 (14개) | 신규 |
+| `frontend/src/__tests__/LightingSuggestion.test.tsx` | LightingSuggestion 단위 테스트 (9개) | 신규 |
+| `frontend/src/components/Layout.tsx` | Result 플레이스홀더 → `<ResultPanel />` 교체, 미사용 `PlaceholderPanel` 함수 제거 | 수정 |
+| `PROGRESS.md` | 진행 기록 업데이트 | 수정 |
+
+### ResultPanel 기능 목록
+
+- **빈 상태** (`result-empty-state`): summary·blueprint_svg·decision 모두 null일 때 BarChart2 아이콘 + "No results yet" 안내 UI 표시
+- **hasResult 판단**: `summary !== null || blueprint_svg !== null || decision !== null` 조건 — 셋 중 하나라도 non-null이면 결과 패널 표시
+- **Summary 카드** (`result-summary`): `result.summary` 텍스트 표시
+- **Decision 카드** (`decision-card`): `result.decision` 값에 따른 컬러 코딩 — `rule_based_ok`=#4ade80 / `edge_learning`=#facc15 / `deep_learning`=#60a5fa / `hw_improvement`=#f87171
+- **Decision Reason** (`decision-reason`): `result.decision_reason` 보조 텍스트 표시
+- **Blueprint Viewer**: `result.blueprint_svg` 있을 때 BlueprintViewer + ParameterSheet 나란히 렌더링
+- **Parameter Sheet**: 노드 클릭 시 `selectedNodeId` 상태 설정 → ParameterSheet `isOpen=true`
+- **Metrics 테이블**: `result.item_results` 있을 때 MetricsChart 렌더링
+- **Lighting 권장사항**: `result.lighting_suggestions` 있을 때 LightingSuggestion 렌더링
+- **Improvement 제안**: `result.improvement_suggestions` 불릿 리스트 표시
+- **Export SVG** (`export-svg-btn`): `blueprint_svg` 있을 때만 표시 → `Blob` + `URL.createObjectURL` → 임시 `<a>` 태그 클릭으로 다운로드
+- **Export PDF** (`export-pdf-btn`): 결과 있을 때 항상 표시 → `window.alert('PDF export coming soon')` 플레이스홀더
+
+### BlueprintViewer 기능 목록
+
+- **SVG 렌더링**: `dangerouslySetInnerHTML={{ __html: svgContent }}`로 SVG 문자열 직접 DOM 삽입 — 백엔드 생성 SVG의 모든 속성·스타일 원본 보존
+- **줌 인/아웃** (`zoom-in-btn` / `zoom-out-btn`): 0.25 step, 0.25x ~ 4x 범위 클램프
+- **스케일 표시** (`scale-display`): `{Math.round(scale * 100)}%` 텍스트 (초기값 100%)
+- **리셋** (`reset-btn`): scale=1, translateX=0, translateY=0 초기화
+- **Fit** (`fit-btn`): 현재 resetView와 동일 동작 (플레이스홀더 — 추후 컨테이너 크기 기반 auto-fit 구현 예정)
+- **팬 (drag)**: `onMouseDown/Move/Up/Leave`로 translateX/Y 조정, `useRef`로 드래그 상태 관리 (불필요한 리렌더 방지)
+- **노드 클릭**: `e.target.closest('[data-node-id]')` DOM 탐색 → `onNodeClick(nodeId)` 콜백 호출
+- **onNodeClick 미전달 시 크래시 없음**: prop 없어도 안전하게 동작
+
+### ParameterSheet 기능 목록
+
+- **가시성 제어**: `style={{ display: isOpen ? 'flex' : 'none' }}` (JSDOM 호환 — Tailwind `hidden` 미사용)
+- **노드 ID 표시** (`parameter-node-id`): 선택된 nodeId 표시
+- **파라미터 목록**: `data[nodeId]` 객체 `Object.entries` → 키-값 쌍 렌더링
+- **파라미터 값 렌더링**: 문자열·숫자 → `String(v)`, 객체 → `JSON.stringify(v)`, null/undefined → `"—"`
+- **빈 상태**: nodeId가 null이거나 data가 null이거나 매칭 nodeId 키가 없으면 "No parameters available" 표시
+- **닫기 버튼** (`parameter-close-btn`): `onClose` 콜백 호출
+
+### MetricsChart 기능 목록
+
+- **테이블 컬럼**: Item ID, Category, Status, Accuracy, FP Rate, FN Rate
+- **상태 표시**: `passed=true` → CheckCircle + "Pass" (#4ade80), `passed=false` → XCircle + "Fail" (#f87171)
+- **Accuracy 표시**: `(accuracy * 100).toFixed(1)%` 형식
+- **FP Rate 바** (`fp-bar-{item_id}`): CSS `width: ${fp_rate * 100}%`, 배경색 #f87171
+- **FN Rate 바** (`fn-bar-{item_id}`): CSS `width: ${fn_rate * 100}%`, 배경색 #facc15
+- **퍼센트 텍스트**: 바 옆에 `(rate * 100).toFixed(1)%` 텍스트 표시
+- **요약 행** (`metrics-summary-row`): `passedCount pass / failedCount fail` + `passed/total` 비율
+- **빈 배열**: 크래시 없이 0 pass / 0 fail 표시
+
+### LightingSuggestion 기능 목록
+
+- **카드 리스트** (`lighting-card-{index}`): `string[]` 배열 각 항목을 개별 카드로 렌더링
+- **Open Light Test** (`open-light-test-btn`): `window.alert('Navigate to Light Test')` 플레이스홀더
+- **빈 배열**: 크래시 없이 카드 미표시
+- **Lightbulb 아이콘**: 헤더 + 버튼에 lucide-react `Lightbulb` 사용
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 | 결과 |
+|------------|----------|------|
+| `ResultPanel.test.tsx` | 18 | ✅ PASS |
+| `BlueprintViewer.test.tsx` | 17 | ✅ PASS |
+| `ParameterSheet.test.tsx` | 12 | ✅ PASS |
+| `MetricsChart.test.tsx` | 14 | ✅ PASS |
+| `LightingSuggestion.test.tsx` | 9 | ✅ PASS |
+| 기존 전체 (Step 40까지) | 306 | ✅ PASS (회귀 없음) |
+
+### Jest 결과
+
+```
+Test Suites: 18 passed, 18 total
+Tests:       376 passed, 376 total (신규 70 + 기존 306)
+Time:        ~4.6s
+```
+
+### TypeScript 검사 결과
+
+```
+npx tsc --noEmit → 오류 없음 (출력 없음)
+```
+
+### 주요 구현 노트
+
+- **SVG 렌더링 방식**: `dangerouslySetInnerHTML`로 SVG 문자열을 직접 DOM에 삽입. React JSX SVG 파싱 대신 원본 SVG를 그대로 렌더링하여 백엔드 생성 SVG의 모든 속성·스타일 보존
+- **줌/팬 구현**: `useRef`로 드래그 상태 관리 (렌더링 트리거 없이), `useState`로 scale·translateX·translateY만 상태 관리. `transform: translate() scale()` CSS 적용
+- **노드 클릭 감지**: `e.target.closest('[data-node-id]')` DOM 탐색으로 SVG 내부 어떤 깊이의 요소를 클릭해도 `data-node-id` 속성이 있는 부모까지 탐색하여 감지
+- **ParameterSheet 가시성**: JSDOM 호환을 위해 Tailwind `hidden` 대신 `style={{ display: isOpen ? 'flex' : 'none' }}` 사용
+- **FP/FN 바 시각화**: 외부 차트 라이브러리 없이 CSS `width` 퍼센트 + 배경색으로 구현. FP=#f87171 (error), FN=#facc15 (warning)
+- **Export SVG**: `Blob([svgContent], {type: 'image/svg+xml'})` → `URL.createObjectURL` → 임시 `<a>` 태그 클릭 → `URL.revokeObjectURL` 패턴
+- **JSDOM URL mock**: `export-svg-btn` 테스트에서 `global.URL.createObjectURL` / `revokeObjectURL`을 `Object.defineProperty`로 모킹 (`jest.fn()` 직접 할당 시 `readonly` 오류 회피)
+- **PlaceholderPanel 제거**: Result가 마지막 플레이스홀더였으므로 `PlaceholderPanel` 함수 완전 삭제 → TypeScript unused-variable 오류 해결
+
+### 이슈 및 특이사항
+
+1. **ParameterSheet 데이터 구조 불일치**: 현재 `Record<string, unknown>` (객체 key 기반 lookup `data[nodeId]`) 방식으로 구현. 실제 백엔드 Orchestrator는 `parameter_sheets: [{node_id, node_name, parameters}]` 배열을 반환하므로, 실제 데이터 연동 시 배열 → 객체 변환 로직 추가 또는 컴포넌트 인터페이스 수정 필요
+
+2. **LightingSuggestion 단순화**: 현재 `string[]`로 구현 (types.ts 실제 타입 반영). 실제 백엔드 LightingAdvisor는 `{category, suggestion, reason, priority}` 객체 배열을 반환. priority별 색상 코딩 (high=#f87171, medium=#facc15, low=#4ade80) 실제 연동 시 추가 필요
+
+3. **fit-btn placeholder**: 현재 `resetView`와 동일 동작 (scale=1, translate=0). 추후 컨테이너 크기 기반 auto-fit scale 계산 구현 필요
+
+4. **MetricsChart name 필드 미포함**: `ItemResult` 인터페이스에 `name` 필드가 없어 `item_id`만 테이블에 표시. 백엔드 `item_results`에는 `name` 포함 (예: "구멍 후보 검출"). 추후 name 컬럼 추가 가능
+
+5. **Decision fallback**: `DECISION_LABELS` 매핑에 없는 `decision` 값이 오면 `decision-card`가 렌더링되지 않음 (크래시 없음, silent ignore). 필요 시 "Unknown decision" fallback 카드 추가 가능
 
 ---
 
