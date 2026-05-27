@@ -80,6 +80,7 @@ type LightTestPreloaded = {
     depth_result: DepthAnalysisResult | null;
     material_result: MaterialAnalysisResult | null;
     analysis_error: string | null;
+    selected_light_id: string | null;
   };
 };
 
@@ -182,6 +183,7 @@ describe('DualViewLayout', () => {
         depth_result: null,
         material_result: null,
         analysis_error: null,
+        selected_light_id: null,
       },
     });
     renderWithStore(store);
@@ -202,6 +204,7 @@ describe('DualViewLayout', () => {
         depth_result: mockDepthResult,
         material_result: null,
         analysis_error: null,
+        selected_light_id: null,
       },
     });
     renderWithStore(store);
@@ -219,6 +222,7 @@ describe('DualViewLayout', () => {
         depth_result: null,
         material_result: mockMaterialResult,
         analysis_error: null,
+        selected_light_id: null,
       },
     });
     renderWithStore(store);
@@ -236,6 +240,7 @@ describe('DualViewLayout', () => {
         depth_result: null,
         material_result: mockMaterialResult,
         analysis_error: null,
+        selected_light_id: null,
       },
     });
     renderWithStore(store);
@@ -264,6 +269,7 @@ describe('DualViewLayout', () => {
           error_message: 'Failed',
         },
         analysis_error: null,
+        selected_light_id: null,
       },
     });
     renderWithStore(store);
@@ -281,6 +287,7 @@ describe('DualViewLayout', () => {
         depth_result: mockDepthResult,
         material_result: mockMaterialResult,
         analysis_error: null,
+        selected_light_id: null,
       },
     });
     renderWithStore(store);

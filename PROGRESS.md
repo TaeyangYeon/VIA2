@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 43 (완료)
+## 현재 진행 단계: Step 44 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -59,7 +59,7 @@
 ## Phase 7: Light Test 윈도우
 - [x] Step 42: Light Test 윈도우 + 듀얼 뷰 레이아웃
 - [x] Step 43: Depth + Material 분석 백엔드 연동
-- [ ] Step 44: 조명 배치 UI (정면도/평면도 동기화)
+- [x] Step 44: 조명 배치 UI (정면도/평면도 동기화)
 - [ ] Step 45: PBR 렌더링 엔진
 - [ ] Step 46: 컬러 조명 + 편광 시뮬레이션
 
@@ -68,6 +68,148 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 44 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 | 종류 | 설명 |
+|------|------|------|
+| `frontend/src/services/types.ts` | 수정 | `LightSize` 인터페이스 추가, `LightConfig`에 `pitch?`, `yaw?`, `lwd?`, `size?` 옵셔널 필드 추가 |
+| `frontend/src/store/slices/lightTestSlice.ts` | 수정 | `selected_light_id: string | null` 상태 추가, `selectLight` 액션 추가 |
+| `frontend/src/hooks/useLightSync.ts` | 생성 | 정면도/평면도 좌표 동기화 커스텀 훅 |
+| `frontend/src/components/light_test/FrontView.tsx` | 생성 | 정면도 캔버스 + 조명 아이콘 오버레이 + 드래그 |
+| `frontend/src/components/light_test/TopView.tsx` | 생성 | 평면도 캔버스 + 카메라 마커 + 조명 아이콘 |
+| `frontend/src/components/light_test/LightController.tsx` | 생성 | 조명 추가/삭제/편집 컨트롤 패널 |
+| `frontend/src/components/light_test/DualViewLayout.tsx` | 수정 | FrontView, TopView, LightController 통합 |
+| `frontend/src/__tests__/useLightSync.test.ts` | 생성 | useLightSync 훅 테스트 (21개) |
+| `frontend/src/__tests__/FrontView.test.tsx` | 생성 | FrontView 컴포넌트 테스트 (13개) |
+| `frontend/src/__tests__/TopView.test.tsx` | 생성 | TopView 컴포넌트 테스트 (13개) |
+| `frontend/src/__tests__/LightController.test.tsx` | 생성 | LightController 컴포넌트 테스트 (39개) |
+| `frontend/src/__tests__/slices.test.ts` | 수정 | `selectLight` 액션 테스트 추가 (5개), initial state 업데이트 |
+| `frontend/src/__tests__/store.test.ts` | 수정 | `selected_light_id: null` initial state 반영 |
+| `frontend/src/__tests__/DualViewLayout.test.tsx` | 수정 | `LightTestPreloaded` 타입에 `selected_light_id` 추가 |
+
+### useLightSync 훅 인터페이스
+
+```ts
+// 반환 타입
+{
+  frontViewLights: FrontViewLight[];   // { ...LightConfig, screenX: number, screenY: number }
+  topViewLights: TopViewLight[];       // { ...LightConfig, screenX: number, screenZ: number }
+  handleFrontDrag(lightId, deltaX, deltaY): void  // X, Y 위치 업데이트
+  handleTopDrag(lightId, deltaX, deltaZ): void    // X, Z 위치 업데이트
+  updateLightAngle(id, 'pitch'|'yaw', value): void
+  updateLightLWD(id, value): void
+}
+// 좌표 변환: worldToScreen = (world + 500) / 1000, clamp [0.05, 0.95]
+// X축 공유: handleFrontDrag와 handleTopDrag 모두 position.x 업데이트 → 양쪽 뷰 동기화
+```
+
+### FrontView 특징 및 data-testid
+
+- 캔버스 기반 이미지 + Depth 오버레이 렌더링 (기존 DualViewLayout 로직 이관)
+- 조명 아이콘: 6가지 shape별 CSS 렌더링 (ring=원, bar=직사각형, spot=삼각형, coaxial=채운원, dome=반원, low_angle_ring=납작타원)
+- 마우스 드래그로 조명 위치 조정 (mousemove/mouseup window 이벤트)
+- 선택된 조명: 흰색 border + `front-light-selected` 내부 마커
+
+| data-testid | 설명 |
+|---|---|
+| `front-view-container` | 전체 컨테이너 |
+| `front-view-canvas` | HTML Canvas 요소 |
+| `front-light-{id}` | 각 조명 아이콘 |
+| `front-light-selected` | 선택된 조명 내부 마커 |
+
+### TopView 특징 및 data-testid
+
+- 캔버스 기반 Depth 맵 렌더링 (기존 DualViewLayout 로직 이관)
+- 카메라 마커: 하단 중앙 고정
+- 조명 아이콘: 평면도 시점 shape 렌더링
+- Depth 데이터 없을 때 "Depth data required" 표시
+
+| data-testid | 설명 |
+|---|---|
+| `top-view-container` | 전체 컨테이너 |
+| `top-view-canvas` | HTML Canvas 요소 |
+| `top-camera-marker` | 카메라 위치 마커 |
+| `top-light-{id}` | 각 조명 아이콘 |
+
+### LightController 특징 및 data-testid
+
+- 조명 없을 때: "Controls will appear here" 플레이스홀더
+- surface_type 배지: `material_result.surface_type` 표시
+- 선택 조명 상세 편집: shape, type, 위치(X/Y/Z), 각도(pitch/yaw), LWD, 강도, 크기
+
+| data-testid | 설명 |
+|---|---|
+| `light-controller` | 전체 컨테이너 |
+| `add-light-btn` | 조명 추가 버튼 |
+| `remove-light-btn` | 선택 조명 삭제 버튼 |
+| `light-list-item-{id}` | 조명 목록 항목 |
+| `selected-light-detail` | 선택 조명 편집 패널 |
+| `shape-select` | 형태 선택 드롭다운 |
+| `type-select` | 종류 선택 드롭다운 |
+| `pos-x`, `pos-y`, `pos-z` | 위치 입력 |
+| `angle-pitch`, `angle-yaw` | 각도 입력 |
+| `lwd-input` | LWD 입력 |
+| `intensity-slider` | 강도 슬라이더 |
+| `size-width`, `size-height` | 크기 입력 |
+| `surface-type-badge` | 표면 유형 배지 |
+
+### DualViewLayout 변경사항
+
+- 기존 canvas 드로잉 useEffect 제거 (FrontView/TopView로 이관)
+- `useLightSync()` 훅 호출 → `handleFrontDrag`, `handleTopDrag` 전달
+- FrontView, TopView, LightController 컴포넌트 통합
+- 패널 구조 및 레이블 유지 (front-view-panel, top-view-panel, light-controls-panel)
+
+### lightTestSlice 상태 변경
+
+| 변경 | 내용 |
+|---|---|
+| 신규 상태 | `selected_light_id: string \| null` (초기값: `null`) |
+| 신규 액션 | `selectLight(id: string \| null)` |
+
+### types.ts 변경
+
+```ts
+// 추가된 인터페이스
+export interface LightSize { width: number; height: number; }
+
+// LightConfig 추가 필드 (옵셔널)
+pitch?: number;   // Pitch 각도 (°), 기본 45
+yaw?: number;     // Yaw 각도 (°), 기본 0
+lwd?: number;     // Light Working Distance (mm), 기본 300
+size?: LightSize; // 조명 크기 (mm), 기본 { width: 50, height: 50 }
+```
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 |
+|---|---|
+| `useLightSync.test.ts` | 21 |
+| `FrontView.test.tsx` | 13 |
+| `TopView.test.tsx` | 13 |
+| `LightController.test.tsx` | 39 |
+| `slices.test.ts` (신규) | +5 |
+| 기존 테스트 (유지) | 443 |
+| **합계** | **529** |
+
+### Jest 결과
+- Test Suites: **25 passed**, 25 total
+- Tests: **529 passed**, 529 total
+- Time: ~4.9s
+
+### TypeScript 결과
+- `npx tsc --noEmit`: **0 errors**
+
+### 주의사항 및 노트
+- `useLightSync.test.ts`에서 `React.createElement(Provider as any, ...)` 캐스트 사용 (`.ts` 파일에서 JSX 미사용)
+- `DualViewLayout.test.tsx`의 `LightTestPreloaded` 타입에 `selected_light_id` 필드 추가 (TypeScript 호환성)
+- `LightConfig`의 새 필드(`pitch`, `yaw`, `lwd`, `size`)는 옵셔널로 정의해 기존 테스트 하위 호환 유지
+- Worker process 강제 종료 경고는 기존 InputPanel useEffect 타이머 누수로 인한 것 (Step 44 범위 외)
 
 ---
 

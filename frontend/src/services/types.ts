@@ -120,6 +120,11 @@ export interface LightColor {
   b: number;
 }
 
+export interface LightSize {
+  width: number;
+  height: number;
+}
+
 export interface LightConfig {
   id: string;
   type: 'led' | 'halogen' | 'uv' | 'ir';
@@ -128,6 +133,10 @@ export interface LightConfig {
   intensity: number;
   color: LightColor;
   polarizer: boolean;
+  pitch?: number;
+  yaw?: number;
+  lwd?: number;
+  size?: LightSize;
 }
 
 // ── Project type (frontend-only) ──────────────────────────────────────────────

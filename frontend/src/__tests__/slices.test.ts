@@ -35,6 +35,7 @@ import lightTestReducer, {
   setAnalysisResult,
   setAnalysisError,
   clearAnalysis,
+  selectLight,
   clearLightTest,
 } from '../store/slices/lightTestSlice';
 import logsReducer, {
@@ -318,6 +319,7 @@ describe('lightTestSlice', () => {
     depth_result: null,
     material_result: null,
     analysis_error: null,
+    selected_light_id: null,
   };
 
   const sampleLight: LightConfig = {
@@ -436,6 +438,28 @@ describe('lightTestSlice', () => {
     expect(result.depth_result).toBeNull();
     expect(result.material_result).toBeNull();
     expect(result.analysis_error).toBeNull();
+  });
+
+  it('selectLight sets selected_light_id', () => {
+    const result = lightTestReducer(undefined, selectLight('light-1'));
+    expect(result.selected_light_id).toBe('light-1');
+  });
+
+  it('selectLight accepts null to deselect', () => {
+    const withSelected = lightTestReducer(undefined, selectLight('light-1'));
+    const result = lightTestReducer(withSelected, selectLight(null));
+    expect(result.selected_light_id).toBeNull();
+  });
+
+  it('selected_light_id is null in initial state', () => {
+    const result = lightTestReducer(undefined, { type: '' });
+    expect(result.selected_light_id).toBeNull();
+  });
+
+  it('clearLightTest resets selected_light_id to null', () => {
+    const withSelected = lightTestReducer(undefined, selectLight('light-1'));
+    const result = lightTestReducer(withSelected, clearLightTest());
+    expect(result.selected_light_id).toBeNull();
   });
 });
 

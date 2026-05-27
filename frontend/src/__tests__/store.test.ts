@@ -110,6 +110,7 @@ describe('Redux store — initial states', () => {
       depth_result: null,
       material_result: null,
       analysis_error: null,
+      selected_light_id: null,
     });
   });
 

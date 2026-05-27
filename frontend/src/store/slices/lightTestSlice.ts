@@ -11,6 +11,7 @@ interface LightTestState {
   depth_result: DepthAnalysisResult | null;
   material_result: MaterialAnalysisResult | null;
   analysis_error: string | null;
+  selected_light_id: string | null;
 }
 
 const initialState: LightTestState = {
@@ -22,6 +23,7 @@ const initialState: LightTestState = {
   depth_result: null,
   material_result: null,
   analysis_error: null,
+  selected_light_id: null,
 };
 
 const lightTestSlice = createSlice({
@@ -83,6 +85,9 @@ const lightTestSlice = createSlice({
       state.material_result = null;
       state.analysis_error = null;
     },
+    selectLight(state, action: PayloadAction<string | null>) {
+      state.selected_light_id = action.payload;
+    },
     clearLightTest() {
       return initialState;
     },
@@ -100,6 +105,7 @@ export const {
   setAnalysisResult,
   setAnalysisError,
   clearAnalysis,
+  selectLight,
   clearLightTest,
 } = lightTestSlice.actions;
 export default lightTestSlice.reducer;
