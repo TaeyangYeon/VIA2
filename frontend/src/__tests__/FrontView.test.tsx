@@ -74,6 +74,8 @@ const makeStore = (selectedId: string | null = null) =>
         material_result: null,
         analysis_error: null,
         selected_light_id: selectedId,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     },
   });

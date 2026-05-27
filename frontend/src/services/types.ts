@@ -133,6 +133,8 @@ export interface LightConfig {
   intensity: number;
   color: LightColor;
   polarizer: boolean;
+  polarizer_enabled?: boolean;
+  polarizer_angle?: number;
   pitch?: number;
   yaw?: number;
   lwd?: number;

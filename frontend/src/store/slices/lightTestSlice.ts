@@ -12,6 +12,8 @@ interface LightTestState {
   material_result: MaterialAnalysisResult | null;
   analysis_error: string | null;
   selected_light_id: string | null;
+  lens_polarizer_angle: number;
+  is_grayscale: boolean;
 }
 
 const initialState: LightTestState = {
@@ -24,6 +26,8 @@ const initialState: LightTestState = {
   material_result: null,
   analysis_error: null,
   selected_light_id: null,
+  lens_polarizer_angle: 0,
+  is_grayscale: false,
 };
 
 const lightTestSlice = createSlice({
@@ -88,6 +92,12 @@ const lightTestSlice = createSlice({
     selectLight(state, action: PayloadAction<string | null>) {
       state.selected_light_id = action.payload;
     },
+    setLensPolarizer(state, action: PayloadAction<number>) {
+      state.lens_polarizer_angle = action.payload;
+    },
+    setIsGrayscale(state, action: PayloadAction<boolean>) {
+      state.is_grayscale = action.payload;
+    },
     clearLightTest() {
       return initialState;
     },
@@ -106,6 +116,8 @@ export const {
   setAnalysisError,
   clearAnalysis,
   selectLight,
+  setLensPolarizer,
+  setIsGrayscale,
   clearLightTest,
 } = lightTestSlice.actions;
 export default lightTestSlice.reducer;

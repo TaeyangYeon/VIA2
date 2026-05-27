@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 45 (완료)
+## 현재 진행 단계: Step 46 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -61,13 +61,110 @@
 - [x] Step 43: Depth + Material 분석 백엔드 연동
 - [x] Step 44: 조명 배치 UI (정면도/평면도 동기화)
 - [x] Step 45: PBR 렌더링 엔진
-- [ ] Step 46: 컬러 조명 + 편광 시뮬레이션
+- [x] Step 46: 컬러 조명 + 편광 시뮬레이션
 
 ## Phase 8: 통합 / 패키징 / 배포
 - [ ] Step 47: 전체 E2E 테스트
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 46 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 | 종류 | 설명 |
+|------|------|------|
+| `light_test/polarization.py` | 신규 | 컬러 조명, 편광 시뮬레이션, 히스토그램 함수 |
+| `light_test/renderer.py` | 수정 | specular/diffuse 분리, 편광 파라미터 통합 |
+| `backend/routers/light_test.py` | 수정 | `lens_polarizer_angle` 필드, `/histogram` 엔드포인트 |
+| `frontend/src/services/types.ts` | 수정 | `polarizer_enabled?`, `polarizer_angle?` 필드 추가 |
+| `frontend/src/store/slices/lightTestSlice.ts` | 수정 | `lens_polarizer_angle`, `is_grayscale` 상태 + 액션 추가 |
+| `frontend/src/services/light_test_api.ts` | 수정 | `lens_polarizer_angle` 요청 필드 추가 |
+| `frontend/src/components/light_test/RenderEngine.tsx` | 수정 | `lens_polarizer_angle` 전달, 그레이스케일 감지 |
+| `frontend/src/components/light_test/ColorLightControl.tsx` | 신규 | RGB 슬라이더 색상 제어 컴포넌트 |
+| `frontend/src/components/light_test/PolarizerControl.tsx` | 신규 | 조명/렌즈 편광 제어 컴포넌트 |
+| `frontend/src/components/light_test/HistogramPanel.tsx` | 신규 | 실시간 채널 히스토그램 패널 |
+| `frontend/src/components/light_test/DualViewLayout.tsx` | 수정 | 새 컴포넌트 통합 |
+| `tests/test_polarization.py` | 신규 | 편광/컬러 관련 백엔드 테스트 |
+| `frontend/src/__tests__/ColorLightControl.test.tsx` | 신규 | ColorLightControl 컴포넌트 테스트 |
+| `frontend/src/__tests__/PolarizerControl.test.tsx` | 신규 | PolarizerControl 컴포넌트 테스트 |
+| `frontend/src/__tests__/HistogramPanel.test.tsx` | 신규 | HistogramPanel 컴포넌트 테스트 |
+
+### `polarization.py` 함수 인터페이스
+
+| 함수 | 시그니처 | 설명 |
+|------|---------|------|
+| `apply_color_lighting` | `(rendered: ndarray, lights: list[dict]) -> ndarray` | 강도 가중 평균 색상 곱 |
+| `is_grayscale_image` | `(image: ndarray) -> bool` | 채널 동일성 검사 |
+| `apply_light_polarization` | `(light: dict) -> float` | 조명 측 편광 전달률 |
+| `apply_lens_polarization` | `(specular, diffuse, angle_deg, surface_type) -> ndarray` | 렌즈 측 Malus's law |
+| `compute_histogram` | `(image: ndarray) -> dict` | 채널별 256-bin 히스토그램 |
+
+### `PBRRenderer.render()` 변경사항
+
+- **신규 파라미터**: `lens_polarizer_angle: float = 0.0`
+- **specular/diffuse 분리**: `diffuse_accum`, `specular_accum` 별도 누적
+- **per-light 편광**: `apply_light_polarization(light)` → 스케일 적용
+- **렌즈 편광**: 모든 조명 처리 후 `apply_lens_polarization()` 적용
+- **컬러 조명**: tone-mapping 후 `apply_color_lighting()` 적용
+
+### `RenderRequest` 변경사항
+
+```python
+class RenderRequest(BaseModel):
+    lens_polarizer_angle: float = 0.0  # 신규
+```
+
+### 새 컴포넌트 data-testid 목록
+
+| 컴포넌트 | data-testid |
+|---------|------------|
+| ColorLightControl | `color-light-control`, `color-disabled-message`, `color-r-slider`, `color-g-slider`, `color-b-slider`, `color-preview-swatch` |
+| PolarizerControl | `polarizer-control`, `light-polarizer-checkbox`, `light-polarizer-spot-dial`, `lens-polarizer-slider`, `lens-polarizer-value` |
+| HistogramPanel | `histogram-panel`, `histogram-canvas`, `histogram-channel-r`, `histogram-channel-g`, `histogram-channel-b`, `histogram-channel-l` |
+
+### Redux 상태 변경사항
+
+| 필드 | 타입 | 기본값 | 액션 |
+|------|------|--------|------|
+| `lens_polarizer_angle` | `number` | `0` | `setLensPolarizer(angle)` |
+| `is_grayscale` | `boolean` | `false` | `setIsGrayscale(flag)` |
+
+`LightConfig`에 `polarizer_enabled?: boolean`, `polarizer_angle?: number` 옵셔널 필드 추가.
+
+### 테스트 커버리지
+
+| 파일 | 테스트 수 |
+|------|----------|
+| `tests/test_polarization.py` | 28 |
+| `frontend/src/__tests__/ColorLightControl.test.tsx` | 9 |
+| `frontend/src/__tests__/PolarizerControl.test.tsx` | 10 |
+| `frontend/src/__tests__/HistogramPanel.test.tsx` | 6 |
+| slices.test.ts (신규 항목) | +9 |
+
+### pytest 결과
+
+```
+1758 passed, 5 skipped in 9.20s
+(test_polarization.py: 28 passed in 0.24s)
+```
+
+### Jest 결과
+
+```
+Test Suites: 29 passed, 29 total
+Tests:       572 passed, 572 total
+Time:        4.80s
+```
+
+### 주의사항
+
+- `apply_color_lighting`은 흰색(255,255,255) 조명에서 이미지 변화 없음 — 기존 렌더 결과 호환
+- `lens_polarizer_angle=0` 기본값: 기존 API 호출 시 편광 효과 없음 (하위 호환)
+- `is_grayscale` 감지: RenderEngine 캔버스에서 샘플링 (64×64 픽셀), 오차 허용 5/255
 
 ---
 

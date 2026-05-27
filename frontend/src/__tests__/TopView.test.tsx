@@ -92,6 +92,8 @@ const makeStore = (opts: {
         material_result: null,
         analysis_error: null,
         selected_light_id: opts.selected_light_id ?? null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     },
   });

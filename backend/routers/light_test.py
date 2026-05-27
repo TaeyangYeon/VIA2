@@ -22,6 +22,11 @@ class RenderRequest(BaseModel):
     depth_map_base64: str | None = None
     lights: list[dict] = []
     surface_type: str = "default"
+    lens_polarizer_angle: float = 0.0
+
+
+class HistogramRequest(BaseModel):
+    image_base64: str
 
 
 def _depth_map_to_base64(depth_map: np.ndarray) -> str:
@@ -140,8 +145,27 @@ async def render_light_test(request: RenderRequest) -> dict[str, Any]:
         surface_type=request.surface_type,
         image_width=w,
         image_height=h,
+        lens_polarizer_angle=request.lens_polarizer_angle,
     )
 
     _, encoded = cv2.imencode(".png", rendered)
     rendered_b64 = base64.b64encode(encoded.tobytes()).decode("utf-8")
     return {"rendered_image": rendered_b64}
+
+
+@router.post("/light_test/histogram")
+async def compute_light_test_histogram(request: HistogramRequest) -> dict[str, Any]:
+    """Compute per-channel histogram for a base64-encoded image."""
+    from light_test.polarization import compute_histogram
+
+    try:
+        img_bytes = base64.b64decode(request.image_base64)
+        img_array = np.frombuffer(img_bytes, np.uint8)
+        image = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid image_base64")
+
+    if image is None:
+        raise HTTPException(status_code=422, detail="Failed to decode image")
+
+    return compute_histogram(image)

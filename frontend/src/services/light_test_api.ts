@@ -46,6 +46,7 @@ export interface RenderLightTestRequest {
   depth_map_base64: string | null;
   lights: import('./types').LightConfig[];
   surface_type: string;
+  lens_polarizer_angle: number;
 }
 
 export interface RenderLightTestResponse {

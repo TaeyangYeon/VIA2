@@ -4,6 +4,9 @@ import FrontView from './FrontView';
 import TopView from './TopView';
 import LightController from './LightController';
 import RenderEngine from './RenderEngine';
+import ColorLightControl from './ColorLightControl';
+import PolarizerControl from './PolarizerControl';
+import HistogramPanel from './HistogramPanel';
 
 export default function DualViewLayout() {
   const { frontViewLights, topViewLights, handleFrontDrag, handleTopDrag } = useLightSync();
@@ -33,6 +36,7 @@ export default function DualViewLayout() {
           <FrontView frontViewLights={frontViewLights} onDrag={handleFrontDrag} />
           <RenderEngine />
         </div>
+        <HistogramPanel />
       </div>
 
       {/* Top View */}
@@ -70,8 +74,10 @@ export default function DualViewLayout() {
             Light Controls
           </span>
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
           <LightController />
+          <ColorLightControl />
+          <PolarizerControl />
         </div>
       </div>
     </div>

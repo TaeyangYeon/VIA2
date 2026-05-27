@@ -3,7 +3,7 @@ jest.mock('../services/light_test_api', () => ({
   renderLightTest: jest.fn(),
 }));
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { configureStore } from '@reduxjs/toolkit';
 import { Provider } from 'react-redux';
 import RenderEngine from '../components/light_test/RenderEngine';
@@ -89,6 +89,8 @@ type LightTestPreloaded = {
     material_result: MaterialAnalysisResult | null;
     analysis_error: string | null;
     selected_light_id: string | null;
+    lens_polarizer_angle: number;
+    is_grayscale: boolean;
   };
 };
 
@@ -102,6 +104,8 @@ const defaultState: LightTestPreloaded['light_test'] = {
   material_result: null,
   analysis_error: null,
   selected_light_id: null,
+  lens_polarizer_angle: 0,
+  is_grayscale: false,
 };
 
 const makeStore = (overrides?: Partial<LightTestPreloaded['light_test']>) =>

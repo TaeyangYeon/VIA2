@@ -36,6 +36,8 @@ import lightTestReducer, {
   setAnalysisError,
   clearAnalysis,
   selectLight,
+  setLensPolarizer,
+  setIsGrayscale,
   clearLightTest,
 } from '../store/slices/lightTestSlice';
 import logsReducer, {
@@ -320,6 +322,8 @@ describe('lightTestSlice', () => {
     material_result: null,
     analysis_error: null,
     selected_light_id: null,
+    lens_polarizer_angle: 0,
+    is_grayscale: false,
   };
 
   const sampleLight: LightConfig = {
@@ -460,6 +464,53 @@ describe('lightTestSlice', () => {
     const withSelected = lightTestReducer(undefined, selectLight('light-1'));
     const result = lightTestReducer(withSelected, clearLightTest());
     expect(result.selected_light_id).toBeNull();
+  });
+
+  it('setLensPolarizer sets lens_polarizer_angle', () => {
+    const result = lightTestReducer(undefined, setLensPolarizer(90));
+    expect(result.lens_polarizer_angle).toBe(90);
+  });
+
+  it('lens_polarizer_angle is 0 in initial state', () => {
+    expect(lightTestReducer(undefined, { type: '' }).lens_polarizer_angle).toBe(0);
+  });
+
+  it('setIsGrayscale sets is_grayscale to true', () => {
+    const result = lightTestReducer(undefined, setIsGrayscale(true));
+    expect(result.is_grayscale).toBe(true);
+  });
+
+  it('setIsGrayscale sets is_grayscale to false', () => {
+    const result = lightTestReducer(undefined, setIsGrayscale(false));
+    expect(result.is_grayscale).toBe(false);
+  });
+
+  it('is_grayscale is false in initial state', () => {
+    expect(lightTestReducer(undefined, { type: '' }).is_grayscale).toBe(false);
+  });
+
+  it('clearLightTest resets lens_polarizer_angle to 0', () => {
+    const withAngle = lightTestReducer(undefined, setLensPolarizer(45));
+    const result = lightTestReducer(withAngle, clearLightTest());
+    expect(result.lens_polarizer_angle).toBe(0);
+  });
+
+  it('updateLight handles polarizer_enabled field', () => {
+    const withLight = lightTestReducer(undefined, addLight(sampleLight));
+    const result = lightTestReducer(
+      withLight,
+      updateLight({ id: 'light-1', changes: { polarizer_enabled: true } }),
+    );
+    expect(result.lights[0].polarizer_enabled).toBe(true);
+  });
+
+  it('updateLight handles polarizer_angle field', () => {
+    const withLight = lightTestReducer(undefined, addLight(sampleLight));
+    const result = lightTestReducer(
+      withLight,
+      updateLight({ id: 'light-1', changes: { polarizer_angle: 45 } }),
+    );
+    expect(result.lights[0].polarizer_angle).toBe(45);
   });
 });
 

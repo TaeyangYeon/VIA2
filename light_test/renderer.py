@@ -1,4 +1,13 @@
-"""Main PBR renderer — depth-first shadow computation + material BRDF (Step 45).
+"""Main PBR renderer — depth-first shadow computation + material BRDF (Step 45/46).
+
+Pipeline per light:
+1. Compute per-pixel light direction vectors (vectorised).
+2. Shadow map via ray marching (vectorised).
+3. Cook-Torrance BRDF split into separate diffuse and specular accumulators.
+4. Apply per-light polarization transmission factor (Malus's law).
+5. Ambient-only on shadow pixels.
+6. After all lights: apply lens-side polarization analyzer (apply_lens_polarization).
+7. Tone-map and apply color-lighting tint (apply_color_lighting).
 
 Performance target: <500 ms for 640×480 with 3 lights using NumPy vectorisation.
 All operations are fully vectorised; no per-pixel Python loops.
@@ -8,6 +17,11 @@ import numpy as np
 
 from light_test.lighting_models import SPECTRAL_WEIGHTS
 from light_test.material_pbr import get_material_params
+from light_test.polarization import (
+    apply_color_lighting,
+    apply_lens_polarization,
+    apply_light_polarization,
+)
 
 _AMBIENT_FACTOR = 0.05   # fraction of original colour applied to shadow regions
 _SHADOW_STEPS = 12        # ray-march steps for shadow computation
@@ -126,14 +140,16 @@ def _angle_factor(
 
 
 class PBRRenderer:
-    """Depth-first PBR renderer.
+    """Depth-first PBR renderer with polarization simulation.
 
     Pipeline per light:
     1. Compute per-pixel light direction vectors (vectorised).
     2. Shadow map via ray marching (vectorised).
-    3. Cook-Torrance BRDF on lit pixels.
-    4. Ambient-only on shadow pixels.
+    3. Cook-Torrance BRDF split into diffuse_accum and specular_accum.
+    4. Apply per-light polarization transmission (apply_light_polarization).
     5. Additive combination across all lights.
+    6. Apply lens-side polarization (apply_lens_polarization).
+    7. Tone-map then apply color-lighting tint (apply_color_lighting).
     """
 
     def render(
@@ -144,8 +160,9 @@ class PBRRenderer:
         surface_type: str,
         image_width: int,
         image_height: int,
+        lens_polarizer_angle: float = 0.0,
     ) -> np.ndarray:
-        """Render image with PBR lighting and depth-based shadows.
+        """Render image with PBR lighting, depth-based shadows, and polarization.
 
         Args:
             image: Original image (H, W) or (H, W, 3), uint8.
@@ -155,6 +172,7 @@ class PBRRenderer:
             surface_type: Material surface type string for the PBR LUT.
             image_width: Canvas width (used for world-coordinate mapping).
             image_height: Canvas height.
+            lens_polarizer_angle: Lens-side analyzer angle in degrees [0, 180].
 
         Returns:
             Rendered image (H, W, 3), uint8, values in [0, 255].
@@ -206,8 +224,9 @@ class PBRRenderer:
         k_s = float(mat["k_s"])
         shininess = float(mat["shininess"])
 
-        # Accumulate light contributions
-        accum = np.zeros((h, w, 3), dtype=np.float32)
+        # Separate diffuse and specular accumulators (H, W, 3)
+        diffuse_accum = np.zeros((h, w, 3), dtype=np.float32)
+        specular_accum = np.zeros((h, w, 3), dtype=np.float32)
 
         for light in lights:
             lx = float(light["position"]["x"])
@@ -243,9 +262,9 @@ class PBRRenderer:
             else:
                 shadow = np.ones((h, w), dtype=np.float32)
 
-            # BRDF — Lambertian diffuse + Blinn-Phong specular (vectorised)
+            # BRDF — separate diffuse and specular (vectorised)
             n_dot_l = np.maximum(0.0, nx * ldx_n + ny * ldy_n + nz * ldz_n)
-            diffuse = k_d * n_dot_l
+            diffuse_term = k_d * n_dot_l
 
             hvx = ldx_n + vx
             hvy = ldy_n + vy
@@ -255,19 +274,30 @@ class PBRRenderer:
             hvy /= hv_len
             hvz /= hv_len
             n_dot_h = np.maximum(0.0, nx * hvx + ny * hvy + nz * hvz)
-            specular = k_s * (n_dot_h ** shininess)
+            specular_term = k_s * (n_dot_h ** shininess)
 
-            brdf = np.maximum(0.0, diffuse + specular)
+            # Common irradiance factors (excluding BRDF)
+            irr_base = l_int * atten * ang * spectral * shadow  # (H, W)
 
-            # Per-pixel irradiance on lit pixels
-            irradiance = l_int * atten * ang * spectral * brdf * shadow  # (H, W)
+            # Per-light polarization transmission factor
+            pol_factor = apply_light_polarization(light)
 
-            accum[:, :, 0] += irradiance * cr
-            accum[:, :, 1] += irradiance * cg
-            accum[:, :, 2] += irradiance * cb
+            irr_diffuse = irr_base * np.maximum(0.0, diffuse_term) * pol_factor
+            irr_specular = irr_base * np.maximum(0.0, specular_term) * pol_factor
+
+            for ch, c in enumerate([cr, cg, cb]):
+                diffuse_accum[:, :, ch] += irr_diffuse * c
+                specular_accum[:, :, ch] += irr_specular * c
+
+        # Apply lens-side polarization
+        combined = apply_lens_polarization(specular_accum, diffuse_accum, lens_polarizer_angle, surface_type)
 
         # Combine: ambient base + albedo-modulated light contributions
         ambient = img_f * _AMBIENT_FACTOR
-        lit = img_f * accum
+        lit = img_f * combined
         result = np.clip(ambient + lit, 0.0, 1.0)
+
+        # Apply color-lighting tint
+        result = apply_color_lighting(result, lights)
+
         return (result * 255.0).astype(np.uint8)

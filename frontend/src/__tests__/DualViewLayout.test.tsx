@@ -81,6 +81,8 @@ type LightTestPreloaded = {
     material_result: MaterialAnalysisResult | null;
     analysis_error: string | null;
     selected_light_id: string | null;
+    lens_polarizer_angle: number;
+    is_grayscale: boolean;
   };
 };
 
@@ -184,6 +186,8 @@ describe('DualViewLayout', () => {
         material_result: null,
         analysis_error: null,
         selected_light_id: null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     });
     renderWithStore(store);
@@ -205,6 +209,8 @@ describe('DualViewLayout', () => {
         material_result: null,
         analysis_error: null,
         selected_light_id: null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     });
     renderWithStore(store);
@@ -223,6 +229,8 @@ describe('DualViewLayout', () => {
         material_result: mockMaterialResult,
         analysis_error: null,
         selected_light_id: null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     });
     renderWithStore(store);
@@ -241,6 +249,8 @@ describe('DualViewLayout', () => {
         material_result: mockMaterialResult,
         analysis_error: null,
         selected_light_id: null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     });
     renderWithStore(store);
@@ -270,6 +280,8 @@ describe('DualViewLayout', () => {
         },
         analysis_error: null,
         selected_light_id: null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     });
     renderWithStore(store);
@@ -288,6 +300,8 @@ describe('DualViewLayout', () => {
         material_result: mockMaterialResult,
         analysis_error: null,
         selected_light_id: null,
+        lens_polarizer_angle: 0,
+        is_grayscale: false,
       },
     });
     renderWithStore(store);

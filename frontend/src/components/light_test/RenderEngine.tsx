@@ -1,7 +1,7 @@
 import { Loader } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../../store';
-import { setRenderedResult } from '../../store/slices/lightTestSlice';
+import { setRenderedResult, setIsGrayscale } from '../../store/slices/lightTestSlice';
 import { renderLightTest } from '../../services/light_test_api';
 
 export default function RenderEngine() {
@@ -11,6 +11,7 @@ export default function RenderEngine() {
   const lights = useAppSelector(s => s.light_test.lights);
   const material_result = useAppSelector(s => s.light_test.material_result);
   const rendered_result = useAppSelector(s => s.light_test.rendered_result);
+  const lens_polarizer_angle = useAppSelector(s => s.light_test.lens_polarizer_angle);
 
   const [isLoading, setIsLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -19,6 +20,39 @@ export default function RenderEngine() {
   const hasImage = image != null;
   const hasDepth = depth_result?.depth_map_base64 != null;
   const hasLights = lights.length > 0;
+
+  // Detect grayscale when rendered result changes
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !rendered_result) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = new window.Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth || canvas.offsetWidth;
+      canvas.height = img.naturalHeight || canvas.offsetHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // Sample pixels to detect grayscale
+      const w = canvas.width;
+      const h = canvas.height;
+      if (w > 0 && h > 0) {
+        const sample = ctx.getImageData(0, 0, Math.min(w, 64), Math.min(h, 64));
+        const data = sample.data;
+        let isGray = true;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          if (Math.abs(r - g) > 5 || Math.abs(r - b) > 5) {
+            isGray = false;
+            break;
+          }
+        }
+        dispatch(setIsGrayscale(isGray));
+      }
+    };
+    img.src = `data:image/png;base64,${rendered_result}`;
+  }, [rendered_result, dispatch]);
 
   // Trigger PBR render (debounced 200 ms) whenever inputs change
   useEffect(() => {
@@ -37,6 +71,7 @@ export default function RenderEngine() {
           depth_map_base64: depth_result!.depth_map_base64!,
           lights,
           surface_type: material_result?.surface_type ?? 'default',
+          lens_polarizer_angle,
         });
         dispatch(setRenderedResult(response.rendered_image));
       } catch {
@@ -49,23 +84,7 @@ export default function RenderEngine() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [image, lights, depth_result, material_result, dispatch, hasImage, hasDepth, hasLights]);
-
-  // Paint rendered image onto canvas whenever the result changes
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !rendered_result) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const img = new window.Image();
-    img.onload = () => {
-      canvas.width = img.naturalWidth || canvas.offsetWidth;
-      canvas.height = img.naturalHeight || canvas.offsetHeight;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
-    img.src = `data:image/png;base64,${rendered_result}`;
-  }, [rendered_result]);
+  }, [image, lights, depth_result, material_result, lens_polarizer_angle, dispatch, hasImage, hasDepth, hasLights]);
 
   // Hint badge when prerequisites are missing
   if (!hasImage || !hasDepth || !hasLights) {
