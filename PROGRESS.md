@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 41 (완료)
+## 현재 진행 단계: Step 42 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -57,7 +57,7 @@
 - [x] Step 41: Result Panel (Blueprint Viewer)
 
 ## Phase 7: Light Test 윈도우
-- [ ] Step 42: Light Test 윈도우 + 듀얼 뷰 레이아웃
+- [x] Step 42: Light Test 윈도우 + 듀얼 뷰 레이아웃
 - [ ] Step 43: Depth + Material 분석 백엔드 연동
 - [ ] Step 44: 조명 배치 UI (정면도/평면도 동기화)
 - [ ] Step 45: PBR 렌더링 엔진
@@ -68,6 +68,109 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 42 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 경로 | 역할 | 상태 |
+|-----------|------|------|
+| `frontend/src/components/light_test/LightTestWindow.tsx` | Light Test 전용 윈도우 컴포넌트 | 신규 생성 |
+| `frontend/src/components/light_test/DualViewLayout.tsx` | 듀얼 뷰 레이아웃 (정면도/평면도/Light Controls) | 신규 생성 |
+| `frontend/src/__tests__/LightTestWindow.test.tsx` | LightTestWindow 테스트 (20개) | 신규 생성 |
+| `frontend/src/__tests__/DualViewLayout.test.tsx` | DualViewLayout 테스트 (15개) | 신규 생성 |
+| `frontend/main.js` | Electron 멀티 윈도우 IPC + Tools 메뉴 | 수정 |
+| `frontend/preload.js` | contextBridge로 electronAPI 노출 | 신규 생성 |
+| `frontend/src/App.tsx` | `#/light-test` 해시 라우팅 추가 | 수정 |
+| `frontend/src/components/LightingSuggestion.tsx` | Open Light Test 버튼 IPC 연결 | 수정 |
+| `frontend/src/components/Layout.tsx` | Light Test 사이드바 항목 추가 | 수정 |
+| `frontend/src/__tests__/LightingSuggestion.test.tsx` | window.open 동작 반영으로 테스트 갱신 | 수정 |
+
+### LightTestWindow 기능 목록
+
+| 기능 | data-testid |
+|------|-------------|
+| 루트 컨테이너 | `light-test-window` |
+| 헤더 바 ("VIA2 — Light Test") | `light-test-header` |
+| 드래그 앤 드롭 존 | `lt-drop-zone` |
+| 빈 상태 안내 | `lt-empty-state` |
+| 파일 인풋 (항상 존재, hidden) | `lt-file-input` |
+| 파일 찾아보기 버튼 | `lt-browse-btn` |
+| 업로드 중 로딩 상태 | `lt-loading-state` |
+| 업로드 실패 에러 상태 | `lt-error-state` |
+| 업로드된 이미지 썸네일 | `lt-image-thumbnail` |
+| 이미지 제거 버튼 | `lt-remove-btn` |
+| 듀얼 뷰 레이아웃 (이미지 로드 후 표시) | `dual-view-layout` |
+
+### DualViewLayout 기능 목록
+
+| 기능 | data-testid |
+|------|-------------|
+| 루트 컨테이너 | `dual-view-layout` |
+| 정면도 패널 (45%) | `front-view-panel` |
+| 정면도 캔버스 | `front-view-canvas` |
+| 평면도 패널 (45%) | `top-view-panel` |
+| 평면도 캔버스 | `top-view-canvas` |
+| Light Controls 사이드바 | `light-controls-panel` |
+| Add Light 버튼 | `add-light-btn` |
+
+### Electron main.js 변경 사항
+
+- `ipcMain.on('open-light-test')` 핸들러 추가
+- `createLightTestWindow()` 함수: 1200×800 BrowserWindow, `#/light-test` 해시 경로 로드
+- 이미 열려 있으면 포커스, 닫히면 참조 null 처리
+- `Tools > Light Test` 메뉴 항목 추가 (단축키: Cmd+Shift+L)
+- `preload.js` 경로 참조 추가
+
+### App.tsx 라우팅 변경 사항
+
+- `window.location.hash === '#/light-test'` 조건으로 분기
+- hash 일치 시 `<LightTestWindow />` 렌더, 아니면 기존 `<Layout />` 렌더
+- JSDOM 기본값 `hash = ''`이므로 기존 App 테스트 전부 통과
+
+### LightingSuggestion.tsx 변경 사항
+
+- `window.alert` → `window.electronAPI?.openLightTest()` (contextBridge) 우선 시도
+- Electron 없는 환경(웹 개발 모드)에서는 `window.open('#/light-test', '_blank')` 폴백
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 | 내용 |
+|-------------|---------|------|
+| `LightTestWindow.test.tsx` | 20 | 렌더링, 업로드 플로우, 에러/로딩 상태, Redux dispatch |
+| `DualViewLayout.test.tsx` | 15 | 레이아웃 구조, 캔버스 요소, 레이블, 이미지 preload |
+| `LightingSuggestion.test.tsx` | 9 | 기존 9개 (window.open 동작 반영) |
+
+### Jest 결과
+
+```
+Test Suites: 20 passed, 20 total
+Tests:       413 passed, 413 total  (기존 376 + 신규 36 + 기존 수정 1)
+Time:        ~4.3s
+```
+
+### TypeScript 검사 결과
+
+```
+npx tsc --noEmit → 오류 없음 (0 errors)
+```
+
+### 주요 구현 노트
+
+- JSDOM 호환: `style={{ display: 'none' }}` 패턴 유지, Tailwind `hidden` 미사용
+- Canvas mock: `jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx)` 패턴 적용
+- Light Test 이미지 업로드는 `light_test` Redux 슬라이스 전용 (`images` 슬라이스 미사용)
+- OK_/NG_ 파일명 검증 없음 — 임의 파일명 허용
+- `contextBridge`를 통한 IPC (`preload.js` 신규 생성) + `window.open` 폴백 구조
+- `DualViewLayout`의 Top View는 "Depth data required" 텍스트를 DOM 요소로 표시 (canvas.fillText는 DOM 접근 불가)
+
+### 이슈 및 특이사항
+
+- `preload.js`가 `main.js`에서 참조되었으나 파일이 없었음 → 신규 생성
+- 기존 `LightingSuggestion.test.tsx`에서 `window.alert` 검증 → `window.open` 검증으로 업데이트 (변경된 동작에 맞게 수정)
+- `DualViewLayout`의 Light Controls는 Step 45(PBR 렌더링) 이전까지 플레이스홀더로 유지
 
 ---
 

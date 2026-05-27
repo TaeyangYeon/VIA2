@@ -9,7 +9,7 @@ const mockSuggestions = [
 
 describe('LightingSuggestion', () => {
   beforeEach(() => {
-    jest.spyOn(window, 'alert').mockImplementation(() => {});
+    jest.spyOn(window, 'open').mockImplementation(() => null);
   });
 
   afterEach(() => {
@@ -55,10 +55,24 @@ describe('LightingSuggestion', () => {
     expect(screen.getByTestId('open-light-test-btn')).toBeInTheDocument();
   });
 
-  it('calls window.alert with "Navigate to Light Test" when button is clicked', () => {
+  it('calls window.open with "#/light-test" when Open Light Test is clicked (no Electron)', () => {
     render(<LightingSuggestion suggestions={mockSuggestions} />);
     fireEvent.click(screen.getByTestId('open-light-test-btn'));
-    expect(window.alert).toHaveBeenCalledWith('Navigate to Light Test');
+    expect(window.open).toHaveBeenCalledWith('#/light-test', '_blank');
+  });
+
+  it('calls electronAPI.openLightTest when available', () => {
+    const mockOpenLightTest = jest.fn();
+    Object.defineProperty(window, 'electronAPI', {
+      value: { openLightTest: mockOpenLightTest },
+      writable: true,
+      configurable: true,
+    });
+    render(<LightingSuggestion suggestions={mockSuggestions} />);
+    fireEvent.click(screen.getByTestId('open-light-test-btn'));
+    expect(mockOpenLightTest).toHaveBeenCalled();
+    expect(window.open).not.toHaveBeenCalled();
+    delete (window as unknown as { electronAPI?: unknown }).electronAPI;
   });
 
   it('renders with empty suggestions array without crashing', () => {

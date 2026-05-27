@@ -9,6 +9,7 @@ import {
   BarChart2,
   ChevronLeft,
   ChevronRight,
+  Monitor,
 } from 'lucide-react';
 import InputPanel from './panels/InputPanel';
 import ROICanvas from './ROICanvas';
@@ -106,6 +107,30 @@ export default function Layout() {
             </button>
           ))}
         </nav>
+
+        {/* Light Test shortcut */}
+        <div className="flex-shrink-0 border-t border-border-default pt-2 px-2">
+          <button
+            data-testid="nav-light-test"
+            onClick={() => {
+              const electronAPI = (window as unknown as { electronAPI?: { openLightTest?: () => void } }).electronAPI;
+              if (electronAPI?.openLightTest) {
+                electronAPI.openLightTest();
+              } else {
+                window.open('#/light-test', '_blank');
+              }
+            }}
+            className="w-full flex items-center gap-3 px-2 py-2 text-left rounded transition-all duration-150 text-text-disabled hover:bg-white/5 hover:text-text-secondary"
+          >
+            <span className="flex-shrink-0"><Monitor size={18} /></span>
+            <span
+              className="text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-200"
+              style={collapsed ? { display: 'none' } : undefined}
+            >
+              Light Test
+            </span>
+          </button>
+        </div>
 
         {/* Collapse toggle */}
         <div className="flex-shrink-0 border-t border-border-default p-2">

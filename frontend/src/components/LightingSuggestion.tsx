@@ -6,7 +6,14 @@ interface Props {
 
 export default function LightingSuggestion({ suggestions }: Props) {
   const handleOpenLightTest = () => {
-    window.alert('Navigate to Light Test');
+    // Try contextBridge API (production Electron with contextIsolation)
+    const electronAPI = (window as unknown as { electronAPI?: { openLightTest?: () => void } }).electronAPI;
+    if (electronAPI?.openLightTest) {
+      electronAPI.openLightTest();
+      return;
+    }
+    // Fallback for web dev mode
+    window.open('#/light-test', '_blank');
   };
 
   return (
