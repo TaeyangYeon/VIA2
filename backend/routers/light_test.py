@@ -1,18 +1,27 @@
-"""Light Test analysis router — runs DepthAgent + MaterialAgent concurrently."""
+"""Light Test analysis and PBR rendering router (Steps 43, 45)."""
 import asyncio
 import base64
+from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
 from fastapi import APIRouter, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from agents.depth_agent import DepthAgent
 from agents.material_agent import MaterialAgent
 from backend.models.engine import EngineMode
-from backend.services import engine_store
+from backend.services import engine_store, image_store
 
 router = APIRouter()
+
+
+class RenderRequest(BaseModel):
+    image_id: str
+    depth_map_base64: str | None = None
+    lights: list[dict] = []
+    surface_type: str = "default"
 
 
 def _depth_map_to_base64(depth_map: np.ndarray) -> str:
@@ -92,3 +101,47 @@ async def analyze_light_test(file: UploadFile) -> dict[str, Any]:
         "depth": depth_response,
         "material": material_response,
     }
+
+
+@router.post("/light_test/render")
+async def render_light_test(request: RenderRequest) -> dict[str, Any]:
+    """Apply PBR rendering with depth-based shadows to the stored image."""
+    from light_test.renderer import PBRRenderer
+
+    metadata = image_store.get_by_id(request.image_id)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    file_path = Path(metadata.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Image file not found on disk")
+
+    image = cv2.imread(str(file_path), cv2.IMREAD_COLOR)
+    if image is None:
+        raise HTTPException(status_code=422, detail="Failed to read image file")
+
+    depth_map: np.ndarray | None = None
+    if request.depth_map_base64:
+        try:
+            depth_bytes = base64.b64decode(request.depth_map_base64)
+            depth_array = np.frombuffer(depth_bytes, np.uint8)
+            depth_img = cv2.imdecode(depth_array, cv2.IMREAD_GRAYSCALE)
+            if depth_img is not None:
+                depth_map = depth_img.astype(np.float32) / 255.0
+        except Exception:
+            depth_map = None
+
+    h, w = image.shape[:2]
+    renderer = PBRRenderer()
+    rendered = renderer.render(
+        image=image,
+        depth_map=depth_map,
+        lights=request.lights,
+        surface_type=request.surface_type,
+        image_width=w,
+        image_height=h,
+    )
+
+    _, encoded = cv2.imencode(".png", rendered)
+    rendered_b64 = base64.b64encode(encoded.tobytes()).decode("utf-8")
+    return {"rendered_image": rendered_b64}

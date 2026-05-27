@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 44 (완료)
+## 현재 진행 단계: Step 45 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -60,7 +60,7 @@
 - [x] Step 42: Light Test 윈도우 + 듀얼 뷰 레이아웃
 - [x] Step 43: Depth + Material 분석 백엔드 연동
 - [x] Step 44: 조명 배치 UI (정면도/평면도 동기화)
-- [ ] Step 45: PBR 렌더링 엔진
+- [x] Step 45: PBR 렌더링 엔진
 - [ ] Step 46: 컬러 조명 + 편광 시뮬레이션
 
 ## Phase 8: 통합 / 패키징 / 배포
@@ -210,6 +210,128 @@ size?: LightSize; // 조명 크기 (mm), 기본 { width: 50, height: 50 }
 - `DualViewLayout.test.tsx`의 `LightTestPreloaded` 타입에 `selected_light_id` 필드 추가 (TypeScript 호환성)
 - `LightConfig`의 새 필드(`pitch`, `yaw`, `lwd`, `size`)는 옵셔널로 정의해 기존 테스트 하위 호환 유지
 - Worker process 강제 종료 경고는 기존 InputPanel useEffect 타이머 누수로 인한 것 (Step 44 범위 외)
+
+---
+
+## Step 45 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 | 종류 | 설명 |
+|------|------|------|
+| `light_test/__init__.py` | 유지 | 빈 패키지 마커 |
+| `light_test/lighting_models.py` | 신규 | 조명 형태별 방사 모델 (ring/bar/spot/coaxial/dome/low_angle_ring) + SPECTRAL_WEIGHTS |
+| `light_test/material_pbr.py` | 신규 | 표면 유형별 PBR 파라미터 LUT + Cook-Torrance BRDF (Lambertian + Blinn-Phong) |
+| `light_test/renderer.py` | 신규 | `PBRRenderer` 클래스 — Depth 우선 그림자 + 재질 BRDF 벡터화 렌더링 |
+| `tests/test_renderer.py` | 신규 | 백엔드 pytest 42개 (lighting_models 11 + material_pbr 11 + renderer 10) |
+| `backend/routers/light_test.py` | 수정 | `POST /api/light_test/render` 엔드포인트 추가 (Pydantic `RenderRequest` 모델) |
+| `frontend/src/services/light_test_api.ts` | 수정 | `renderLightTest()` 함수 + `RenderLightTestRequest/Response` 인터페이스 추가 |
+| `frontend/src/components/light_test/RenderEngine.tsx` | 신규 | PBR 렌더 결과 표시 React 컴포넌트 (디바운스 200ms, 로딩/힌트 상태) |
+| `frontend/src/__tests__/RenderEngine.test.tsx` | 신규 | 프론트엔드 Jest 10개 |
+| `frontend/src/components/light_test/DualViewLayout.tsx` | 수정 | RenderEngine 컴포넌트 정면도 패널에 오버레이 통합 |
+| `PROGRESS.md` | 수정 | Step 45 완료 표시 및 상세 내역 추가 |
+
+### 렌더링 파이프라인 아키텍처
+
+```
+PBRRenderer.render()
+├── 1. 입력 이미지 → float32 (H,W,3) [0,1]
+├── 2. depth_map → pz_grid (mm), 표면 법선 계산 (Sobel gradient)
+├── 3. 각 조명원에 대해 (NumPy 벡터화):
+│   a. 픽셀별 조명 방향 벡터 (H,W) 계산
+│   b. _shadow_mask(): 12단계 레이 마칭 → 1=점등, 0=그림자
+│   c. _angle_factor(): 형태별 각도 감쇠 (spot=콘체크, dome=반구, 나머지=균일)
+│   d. BRDF: Lambertian 확산 (k_d·N·L) + Blinn-Phong 정반사 (k_s·(N·H)^n)
+│   e. 조명 기여 = 강도 × 역제곱 감쇠 × 각도인수 × 분광가중치 × BRDF × 그림자
+├── 4. 모든 조명 기여 가산
+└── 5. result = ambient(0.05×원본) + 원본×조명합산 → tone-map → uint8
+```
+
+### `lighting_models.py` 인터페이스
+
+```python
+SPECTRAL_WEIGHTS: dict[str, float]  # {'led':1.0, 'halogen':1.2, 'uv':0.7, 'ir':0.8}
+
+def compute_emission(light: dict, surface_point: np.ndarray) -> float
+def ring_emission(light: dict, surface_point: np.ndarray) -> float
+def bar_emission(light: dict, surface_point: np.ndarray) -> float
+def spot_emission(light: dict, surface_point: np.ndarray) -> float     # 콘 각도 체크
+def coaxial_emission(light: dict, surface_point: np.ndarray) -> float  # 각도 비의존
+def dome_emission(light: dict, surface_point: np.ndarray) -> float
+def low_angle_ring_emission(light: dict, surface_point: np.ndarray) -> float
+```
+
+### `material_pbr.py` LUT 값
+
+| 표면 유형 | k_d | k_s | roughness | shininess |
+|-----------|-----|-----|-----------|-----------|
+| metal | 0.20 | 0.875 | 0.30 | 64 |
+| plastic | 0.70 | 0.400 | 0.30 | 32 |
+| glass | 0.075 | 0.950 | 0.05 | 128 |
+| rubber | 0.875 | 0.035 | 0.90 | 4 |
+| ceramic | 0.60 | 0.350 | 0.40 | 24 |
+| pcb | 0.70 | 0.150 | 0.50 | 16 |
+| default | 0.50 | 0.300 | 0.50 | 16 |
+
+### `POST /api/light_test/render` 엔드포인트
+
+```python
+# Request
+class RenderRequest(BaseModel):
+    image_id: str             # ImageMetadata.id (disk에서 직접 로드)
+    depth_map_base64: str | None  # analyze 엔드포인트의 depth_map_base64 (PNG b64)
+    lights: list[dict]        # LightConfig 객체 목록
+    surface_type: str         # 재질 유형 문자열
+
+# Response
+{"rendered_image": "<base64 PNG>"}
+```
+
+### `RenderEngine.tsx` 컴포넌트
+
+- Redux에서 `image`, `depth_result`, `lights`, `material_result`, `rendered_result` 구독
+- 전제조건 불충족 시 힌트 배지 표시 (정면도 하단 고정, 반투명)
+- 전제조건 충족 시 정면도 위에 절대 위치 오버레이
+- 200ms 디바운스 → `renderLightTest()` API 호출 → `setRenderedResult()` dispatch
+- 렌더링 중 로딩 스피너 표시
+
+| data-testid | 설명 |
+|---|---|
+| `render-engine-hint` | 전제조건 미충족 힌트 배지 |
+| `render-engine` | 렌더링 오버레이 컨테이너 |
+| `render-engine-canvas` | PBR 결과 캔버스 |
+| `render-loading` | 로딩 표시 |
+
+### 테스트 커버리지
+
+| 테스트 파일 | 테스트 수 |
+|---|---|
+| `tests/test_renderer.py` | 42 (신규) |
+| `src/__tests__/RenderEngine.test.tsx` | 10 (신규) |
+| 기존 테스트 (유지) | 529 (frontend) + 1688 (backend) |
+
+### 테스트 결과
+
+#### pytest (backend)
+- **42 passed** (test_renderer.py 전용)
+- **1730 passed**, 1 skipped, 2 warnings (전체 suite)
+- Time: ~8.4s
+
+#### Jest (frontend)
+- Test Suites: **26 passed**, 26 total
+- Tests: **539 passed**, 539 total
+- Time: ~4.5s
+
+### 성능 특성
+- 64×64 이미지 + 3조명 기준: ~0.19s (NumPy 벡터화)
+- 그림자 레이 마칭: 12단계 (per-light, 벡터화)
+- 역제곱 감쇠 최대값 클램프: ×4 (과도한 근거리 밝기 방지)
+- Ambient 인수: 0.05 (그림자 영역 5% 원본 색상 유지)
+
+### 주의사항
+- `image_width`/`image_height` 파라미터는 API 호환성 유지를 위해 서명에 포함; 렌더러 내부에서는 실제 이미지 (H,W) 사용
+- Pyright `reportMissingImports` 경고는 `light_test.*` 패키지가 프로젝트 루트 기준으로 resolve되지 않아 발생; pytest는 정상 동작
+- `LightConfig.color`는 `{r,g,b}` 객체 (hex 문자열 아님) — 렌더러에서 0~255 정규화 처리
 
 ---
 

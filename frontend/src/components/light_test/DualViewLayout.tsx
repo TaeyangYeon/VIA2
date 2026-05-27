@@ -3,6 +3,7 @@ import { useLightSync } from '../../hooks/useLightSync';
 import FrontView from './FrontView';
 import TopView from './TopView';
 import LightController from './LightController';
+import RenderEngine from './RenderEngine';
 
 export default function DualViewLayout() {
   const { frontViewLights, topViewLights, handleFrontDrag, handleTopDrag } = useLightSync();
@@ -30,6 +31,7 @@ export default function DualViewLayout() {
         </div>
         <div className="flex-1 relative overflow-hidden">
           <FrontView frontViewLights={frontViewLights} onDrag={handleFrontDrag} />
+          <RenderEngine />
         </div>
       </div>
 

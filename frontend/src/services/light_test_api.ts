@@ -40,3 +40,24 @@ export async function analyzeLightTestImage(file: File): Promise<LightTestAnalys
   );
   return response.data;
 }
+
+export interface RenderLightTestRequest {
+  image_id: string;
+  depth_map_base64: string | null;
+  lights: import('./types').LightConfig[];
+  surface_type: string;
+}
+
+export interface RenderLightTestResponse {
+  rendered_image: string;
+}
+
+export async function renderLightTest(
+  request: RenderLightTestRequest,
+): Promise<RenderLightTestResponse> {
+  const response = await api.post<RenderLightTestResponse>(
+    '/api/light_test/render',
+    request,
+  );
+  return response.data;
+}
