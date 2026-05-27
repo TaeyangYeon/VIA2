@@ -106,6 +106,10 @@ describe('Redux store — initial states', () => {
       lights: [],
       camera_view: 'front',
       rendered_result: null,
+      analysis_status: 'idle',
+      depth_result: null,
+      material_result: null,
+      analysis_error: null,
     });
   });
 

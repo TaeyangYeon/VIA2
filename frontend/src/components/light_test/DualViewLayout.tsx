@@ -20,6 +20,8 @@ function drawCrosshair(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
 
 export default function DualViewLayout() {
   const image = useAppSelector(s => s.light_test.image);
+  const depth_result = useAppSelector(s => s.light_test.depth_result);
+  const material_result = useAppSelector(s => s.light_test.material_result);
   const frontCanvasRef = useRef<HTMLCanvasElement>(null);
   const topCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -47,11 +49,23 @@ export default function DualViewLayout() {
         const y = (canvas.height - h) / 2;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, x, y, w, h);
-        drawCrosshair(ctx, canvas.width / 2, canvas.height / 2);
+
+        if (depth_result?.depth_map_base64) {
+          const depthImg = new window.Image();
+          depthImg.onload = () => {
+            ctx.globalAlpha = 0.4;
+            ctx.drawImage(depthImg, x, y, w, h);
+            ctx.globalAlpha = 1;
+            drawCrosshair(ctx, canvas.width / 2, canvas.height / 2);
+          };
+          depthImg.src = `data:image/png;base64,${depth_result.depth_map_base64}`;
+        } else {
+          drawCrosshair(ctx, canvas.width / 2, canvas.height / 2);
+        }
       };
       img.src = `http://localhost:8000${image.file_path}`;
     }
-  }, [image]);
+  }, [image, depth_result]);
 
   useEffect(() => {
     const canvas = topCanvasRef.current;
@@ -62,7 +76,27 @@ export default function DualViewLayout() {
     ctx.fillStyle = '#111111';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawCrosshair(ctx, canvas.width / 2, canvas.height / 2);
-  }, []);
+
+    if (depth_result?.depth_map_base64) {
+      const depthImg = new window.Image();
+      depthImg.onload = () => {
+        const scale = Math.min(
+          canvas.width / (depthImg.naturalWidth || 1),
+          canvas.height / (depthImg.naturalHeight || 1),
+        );
+        const w = (depthImg.naturalWidth || canvas.width) * scale;
+        const h = (depthImg.naturalHeight || canvas.height) * scale;
+        const x = (canvas.width - w) / 2;
+        const y = (canvas.height - h) / 2;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(depthImg, x, y, w, h);
+        drawCrosshair(ctx, canvas.width / 2, canvas.height / 2);
+      };
+      depthImg.src = `data:image/png;base64,${depth_result.depth_map_base64}`;
+    }
+  }, [depth_result]);
+
+  const hasDepth = depth_result?.depth_map_base64 != null;
 
   return (
     <div
@@ -117,13 +151,15 @@ export default function DualViewLayout() {
             className="w-full h-full"
             style={{ display: 'block' }}
           />
-          <div
-            className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          >
-            <p className="text-xs" style={{ color: '#555555' }}>
-              Depth data required
-            </p>
-          </div>
+          {!hasDepth && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+            >
+              <p className="text-xs" style={{ color: '#555555' }}>
+                Depth data required
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -143,6 +179,19 @@ export default function DualViewLayout() {
           </span>
         </div>
         <div className="flex-1 flex flex-col items-center justify-center gap-3 p-4">
+          {material_result?.surface_type && (
+            <div
+              data-testid="surface-type-badge"
+              className="px-2 py-1 rounded text-xs"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid #3a3a3a',
+                color: '#a0a0a0',
+              }}
+            >
+              {material_result.surface_type}
+            </div>
+          )}
           <p className="text-xs text-center" style={{ color: '#555555' }}>
             Controls will appear here
           </p>

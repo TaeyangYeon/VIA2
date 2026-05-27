@@ -1,8 +1,15 @@
 import { ChangeEvent, DragEvent, useRef, useState } from 'react';
 import { Monitor, Upload, X } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store';
-import { setLightTestImage } from '../../store/slices/lightTestSlice';
+import {
+  setLightTestImage,
+  setAnalysisLoading,
+  setAnalysisResult,
+  setAnalysisError,
+  clearAnalysis,
+} from '../../store/slices/lightTestSlice';
 import { uploadImage } from '../../services/api';
+import { analyzeLightTestImage } from '../../services/light_test_api';
 import DualViewLayout from './DualViewLayout';
 
 type UploadStatus = 'idle' | 'loading' | 'error';
@@ -13,6 +20,8 @@ const ACCEPT_EXTS = /\.(png|jpe?g|bmp|tiff?)$/i;
 export default function LightTestWindow() {
   const dispatch = useAppDispatch();
   const image = useAppSelector(s => s.light_test.image);
+  const analysis_status = useAppSelector(s => s.light_test.analysis_status);
+  const analysis_error = useAppSelector(s => s.light_test.analysis_error);
   const [status, setStatus] = useState<UploadStatus>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -30,6 +39,22 @@ export default function LightTestWindow() {
       const metadata = await uploadImage(file);
       dispatch(setLightTestImage(metadata));
       setStatus('idle');
+
+      dispatch(setAnalysisLoading());
+      try {
+        const response = await analyzeLightTestImage(file);
+        dispatch(
+          setAnalysisResult({
+            depth: response.depth,
+            material: response.material,
+            status: response.status,
+          }),
+        );
+      } catch (err) {
+        dispatch(
+          setAnalysisError(err instanceof Error ? err.message : 'Analysis failed'),
+        );
+      }
     } catch {
       setErrorMsg('Upload failed. Please try again.');
       setStatus('error');
@@ -50,6 +75,7 @@ export default function LightTestWindow() {
 
   const handleRemove = () => {
     dispatch(setLightTestImage(null));
+    dispatch(clearAnalysis());
     setStatus('idle');
     setErrorMsg(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -229,6 +255,58 @@ export default function LightTestWindow() {
             >
               <X size={14} />
             </button>
+          </div>
+        )}
+
+        {/* Analysis status indicators */}
+        {image && analysis_status === 'loading' && (
+          <div
+            data-testid="lt-analysis-loading"
+            className="flex items-center gap-2 mt-2 px-4 py-2 rounded"
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #2a2a2a' }}
+          >
+            <div
+              className="w-3 h-3 rounded-full border-2 animate-spin flex-shrink-0"
+              style={{ borderColor: '#2a2a2a', borderTopColor: '#a0a0a0' }}
+            />
+            <span className="text-xs" style={{ color: '#a0a0a0' }}>
+              Analyzing depth &amp; material…
+            </span>
+          </div>
+        )}
+
+        {image && (analysis_status === 'success' || analysis_status === 'partial') && (
+          <div
+            data-testid="lt-analysis-complete"
+            className="flex items-center gap-2 mt-2 px-4 py-2 rounded"
+            style={{
+              background: 'rgba(74,222,128,0.05)',
+              border: '1px solid rgba(74,222,128,0.2)',
+            }}
+          >
+            <span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: '#4ade80' }}
+            />
+            <span className="text-xs" style={{ color: '#4ade80' }}>
+              {analysis_status === 'success' ? 'Analysis complete' : 'Analysis partial'}
+            </span>
+          </div>
+        )}
+
+        {image && analysis_status === 'error' && (
+          <div
+            data-testid="lt-analysis-error"
+            className="flex items-center gap-2 mt-2 px-4 py-2 rounded"
+            style={{
+              background: 'rgba(248,113,113,0.05)',
+              border: '1px solid rgba(248,113,113,0.2)',
+            }}
+          >
+            <X size={12} style={{ color: '#f87171', flexShrink: 0 }} />
+            <span className="text-xs" style={{ color: '#f87171' }}>
+              {analysis_error ?? 'Analysis failed'}
+            </span>
           </div>
         )}
       </div>

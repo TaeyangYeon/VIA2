@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 42 (완료)
+## 현재 진행 단계: Step 43 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -58,7 +58,7 @@
 
 ## Phase 7: Light Test 윈도우
 - [x] Step 42: Light Test 윈도우 + 듀얼 뷰 레이아웃
-- [ ] Step 43: Depth + Material 분석 백엔드 연동
+- [x] Step 43: Depth + Material 분석 백엔드 연동
 - [ ] Step 44: 조명 배치 UI (정면도/평면도 동기화)
 - [ ] Step 45: PBR 렌더링 엔진
 - [ ] Step 46: 컬러 조명 + 편광 시뮬레이션
@@ -68,6 +68,112 @@
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 43 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 경로 | 역할 | 상태 |
+|-----------|------|------|
+| `backend/routers/light_test.py` | `POST /api/light_test/analyze` 엔드포인트 | 신규 생성 |
+| `backend/main.py` | light_test_router 등록 | 수정 |
+| `tests/test_light_test_api.py` | 백엔드 API 테스트 26개 | 신규 생성 |
+| `frontend/src/services/light_test_api.ts` | 프론트엔드 Light Test API 서비스 | 신규 생성 |
+| `frontend/src/store/slices/lightTestSlice.ts` | 분석 상태/액션 4종 추가 | 수정 |
+| `frontend/src/components/light_test/LightTestWindow.tsx` | 분석 트리거 + UI 상태 표시 | 수정 |
+| `frontend/src/components/light_test/DualViewLayout.tsx` | 깊이맵 오버레이 + surface type 뱃지 | 수정 |
+| `frontend/src/__tests__/LightTestWindow.test.tsx` | 분석 상태 테스트 7개 추가 | 수정 |
+| `frontend/src/__tests__/DualViewLayout.test.tsx` | 깊이/재질 표시 테스트 6개 추가 | 수정 |
+| `frontend/src/__tests__/light_test_api.test.ts` | API 서비스 테스트 9개 | 신규 생성 |
+| `frontend/src/__tests__/slices.test.ts` | lightTestSlice 신규 액션 8개 추가 | 수정 |
+| `frontend/src/__tests__/store.test.ts` | light_test 초기 상태 갱신 | 수정 |
+
+### 백엔드 엔드포인트
+
+| 항목 | 값 |
+|------|----|
+| Method | POST |
+| Path | `/api/light_test/analyze` |
+| Request | `multipart/form-data` — `file: UploadFile` |
+| Response status | `"success"` / `"partial"` / `"error"` |
+| depth 필드 | `status`, `depth_stats`, `depth_map_shape`, `depth_map_base64`, `error_message` |
+| material 필드 | `status`, `surface_type`, `material_map`, `confidence`, `error_message` |
+| 엔진 체크 | local 모드 → HTTP 400 |
+| 잘못된 이미지 | HTTP 422 |
+| 동시 실행 | `asyncio.gather()` 로 DepthAgent + MaterialAgent 병렬 실행 |
+
+### 프론트엔드 API 서비스 (`light_test_api.ts`)
+
+| 인터페이스 | 설명 |
+|-----------|------|
+| `DepthAnalysisResult` | status, depth_stats, depth_map_shape, depth_map_base64, error_message |
+| `MaterialAnalysisResult` | status, surface_type, material_map, confidence, error_message |
+| `LightTestAnalysisResponse` | status, depth, material |
+| `analyzeLightTestImage(file)` | FormData POST → `/api/light_test/analyze` |
+
+### lightTestSlice 상태 변경
+
+| 신규 필드 | 타입 | 초기값 |
+|-----------|------|--------|
+| `analysis_status` | `'idle' \| 'loading' \| 'success' \| 'partial' \| 'error'` | `'idle'` |
+| `depth_result` | `DepthAnalysisResult \| null` | `null` |
+| `material_result` | `MaterialAnalysisResult \| null` | `null` |
+| `analysis_error` | `string \| null` | `null` |
+
+| 신규 액션 | 설명 |
+|-----------|------|
+| `setAnalysisLoading()` | status → loading, results 초기화 |
+| `setAnalysisResult({depth, material, status})` | 분석 결과 저장 |
+| `setAnalysisError(message)` | 에러 메시지 저장 |
+| `clearAnalysis()` | 분석 상태 idle/null 초기화 |
+
+### LightTestWindow UI 변경
+
+| data-testid | 조건 | 설명 |
+|-------------|------|------|
+| `lt-analysis-loading` | `analysis_status === 'loading'` | "Analyzing depth & material…" + spinner |
+| `lt-analysis-complete` | `analysis_status === 'success' \| 'partial'` | 녹색 뱃지 |
+| `lt-analysis-error` | `analysis_status === 'error'` | 빨간 에러 메시지 |
+
+### DualViewLayout 변경
+
+- Front View 캔버스: `depth_map_base64` 존재 시 40% 투명도로 깊이맵 오버레이
+- Top View: `depth_map_base64` 없으면 "Depth data required" 텍스트 표시, 있으면 깊이맵 렌더링
+- Light Controls: `material_result.surface_type` 있으면 `surface-type-badge` (data-testid) 표시
+
+### 테스트 커버리지
+
+| 테스트 파일 | 신규 테스트 수 | 내용 |
+|-------------|-------------|------|
+| `test_light_test_api.py` | 26 (신규) | 백엔드 엔드포인트 전체 시나리오 |
+| `LightTestWindow.test.tsx` | +7 | 분석 로딩/성공/부분/에러 상태 UI |
+| `DualViewLayout.test.tsx` | +6 | 깊이맵/재질 결과 표시 |
+| `light_test_api.test.ts` | 9 (신규) | API 서비스 함수 |
+| `slices.test.ts` | +8 | lightTestSlice 신규 액션 |
+| `store.test.ts` | +0 (수정 1) | 초기 상태 필드 갱신 |
+
+### Jest 결과
+
+```
+Test Suites: 21 passed, 21 total
+Tests:       443 passed, 443 total
+Time:        ~4.8s
+```
+
+### TypeScript 검사 결과
+
+```
+npx tsc --noEmit → 오류 없음 (0 errors)
+```
+
+### pytest 결과
+
+```
+tests/test_light_test_api.py: 26 passed
+전체: 1688 passed, 5 skipped (신규 26 추가)
+```
 
 ---
 

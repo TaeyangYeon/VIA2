@@ -1,11 +1,16 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { ImageMetadata, LightConfig } from '../../services/types';
+import type { DepthAnalysisResult, MaterialAnalysisResult } from '../../services/light_test_api';
 
 interface LightTestState {
   image: ImageMetadata | null;
   lights: LightConfig[];
   camera_view: 'front' | 'top';
   rendered_result: string | null;
+  analysis_status: 'idle' | 'loading' | 'success' | 'partial' | 'error';
+  depth_result: DepthAnalysisResult | null;
+  material_result: MaterialAnalysisResult | null;
+  analysis_error: string | null;
 }
 
 const initialState: LightTestState = {
@@ -13,6 +18,10 @@ const initialState: LightTestState = {
   lights: [],
   camera_view: 'front',
   rendered_result: null,
+  analysis_status: 'idle',
+  depth_result: null,
+  material_result: null,
+  analysis_error: null,
 };
 
 const lightTestSlice = createSlice({
@@ -43,6 +52,37 @@ const lightTestSlice = createSlice({
     setRenderedResult(state, action: PayloadAction<string | null>) {
       state.rendered_result = action.payload;
     },
+    setAnalysisLoading(state) {
+      state.analysis_status = 'loading';
+      state.depth_result = null;
+      state.material_result = null;
+      state.analysis_error = null;
+    },
+    setAnalysisResult(
+      state,
+      action: PayloadAction<{
+        depth: DepthAnalysisResult;
+        material: MaterialAnalysisResult;
+        status: string;
+      }>,
+    ) {
+      const s = action.payload.status;
+      state.analysis_status =
+        s === 'success' || s === 'partial' || s === 'error' ? s : 'error';
+      state.depth_result = action.payload.depth;
+      state.material_result = action.payload.material;
+      state.analysis_error = null;
+    },
+    setAnalysisError(state, action: PayloadAction<string>) {
+      state.analysis_status = 'error';
+      state.analysis_error = action.payload;
+    },
+    clearAnalysis(state) {
+      state.analysis_status = 'idle';
+      state.depth_result = null;
+      state.material_result = null;
+      state.analysis_error = null;
+    },
     clearLightTest() {
       return initialState;
     },
@@ -56,6 +96,10 @@ export const {
   updateLight,
   setCameraView,
   setRenderedResult,
+  setAnalysisLoading,
+  setAnalysisResult,
+  setAnalysisError,
+  clearAnalysis,
   clearLightTest,
 } = lightTestSlice.actions;
 export default lightTestSlice.reducer;

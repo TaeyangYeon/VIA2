@@ -4,6 +4,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import lightTestReducer from '../store/slices/lightTestSlice';
 import DualViewLayout from '../components/light_test/DualViewLayout';
 import type { ImageMetadata } from '../services/types';
+import type { DepthAnalysisResult, MaterialAnalysisResult } from '../services/light_test_api';
 
 const mockCtx = {
   clearRect: jest.fn(),
@@ -47,7 +48,42 @@ const mockImage: ImageMetadata = {
   group: 'light_test',
 };
 
-const makeStore = (preloadedState?: { light_test: { image: ImageMetadata | null; lights: []; camera_view: 'front' | 'top'; rendered_result: null } }) =>
+const mockDepthResult: DepthAnalysisResult = {
+  status: 'success',
+  depth_stats: {
+    depth_complexity: 0.5,
+    has_shadow_region: true,
+    depth_range: 0.8,
+    depth_mean: 0.4,
+    depth_gradient_max: 0.35,
+  },
+  depth_map_shape: [100, 100],
+  depth_map_base64: 'iVBORw0KGgo=',
+  error_message: null,
+};
+
+const mockMaterialResult: MaterialAnalysisResult = {
+  status: 'success',
+  surface_type: 'metal',
+  material_map: null,
+  confidence: 0.85,
+  error_message: null,
+};
+
+type LightTestPreloaded = {
+  light_test: {
+    image: ImageMetadata | null;
+    lights: [];
+    camera_view: 'front' | 'top';
+    rendered_result: string | null;
+    analysis_status: 'idle' | 'loading' | 'success' | 'partial' | 'error';
+    depth_result: DepthAnalysisResult | null;
+    material_result: MaterialAnalysisResult | null;
+    analysis_error: string | null;
+  };
+};
+
+const makeStore = (preloadedState?: LightTestPreloaded) =>
   configureStore({
     reducer: { light_test: lightTestReducer },
     preloadedState,
@@ -110,7 +146,7 @@ describe('DualViewLayout', () => {
     expect(canvas.tagName).toBe('CANVAS');
   });
 
-  it('shows "Depth data required" text in top view', () => {
+  it('shows "Depth data required" text when no depth result', () => {
     renderWithStore();
     expect(screen.getByText(/Depth data required/i)).toBeInTheDocument();
   });
@@ -137,10 +173,118 @@ describe('DualViewLayout', () => {
 
   it('renders with image preloaded in redux store', () => {
     const store = makeStore({
-      light_test: { image: mockImage, lights: [], camera_view: 'front', rendered_result: null },
+      light_test: {
+        image: mockImage,
+        lights: [],
+        camera_view: 'front',
+        rendered_result: null,
+        analysis_status: 'idle',
+        depth_result: null,
+        material_result: null,
+        analysis_error: null,
+      },
     });
     renderWithStore(store);
     expect(screen.getByTestId('dual-view-layout')).toBeInTheDocument();
     expect(screen.getByTestId('front-view-canvas').tagName).toBe('CANVAS');
+  });
+
+  // ── Depth/material result display tests ────────────────────────────────────
+
+  it('hides "Depth data required" when depth result is available', () => {
+    const store = makeStore({
+      light_test: {
+        image: mockImage,
+        lights: [],
+        camera_view: 'front',
+        rendered_result: null,
+        analysis_status: 'success',
+        depth_result: mockDepthResult,
+        material_result: null,
+        analysis_error: null,
+      },
+    });
+    renderWithStore(store);
+    expect(screen.queryByText(/Depth data required/i)).not.toBeInTheDocument();
+  });
+
+  it('shows surface-type-badge when material result has surface_type', () => {
+    const store = makeStore({
+      light_test: {
+        image: mockImage,
+        lights: [],
+        camera_view: 'front',
+        rendered_result: null,
+        analysis_status: 'success',
+        depth_result: null,
+        material_result: mockMaterialResult,
+        analysis_error: null,
+      },
+    });
+    renderWithStore(store);
+    expect(screen.getByTestId('surface-type-badge')).toBeInTheDocument();
+  });
+
+  it('surface-type-badge shows correct surface type text', () => {
+    const store = makeStore({
+      light_test: {
+        image: mockImage,
+        lights: [],
+        camera_view: 'front',
+        rendered_result: null,
+        analysis_status: 'success',
+        depth_result: null,
+        material_result: mockMaterialResult,
+        analysis_error: null,
+      },
+    });
+    renderWithStore(store);
+    expect(screen.getByTestId('surface-type-badge')).toHaveTextContent('metal');
+  });
+
+  it('does not show surface-type-badge when material_result is null', () => {
+    renderWithStore();
+    expect(screen.queryByTestId('surface-type-badge')).not.toBeInTheDocument();
+  });
+
+  it('does not show surface-type-badge when surface_type is null', () => {
+    const store = makeStore({
+      light_test: {
+        image: mockImage,
+        lights: [],
+        camera_view: 'front',
+        rendered_result: null,
+        analysis_status: 'error',
+        depth_result: null,
+        material_result: {
+          status: 'error',
+          surface_type: null,
+          material_map: null,
+          confidence: null,
+          error_message: 'Failed',
+        },
+        analysis_error: null,
+      },
+    });
+    renderWithStore(store);
+    expect(screen.queryByTestId('surface-type-badge')).not.toBeInTheDocument();
+  });
+
+  it('shows both depth and material results simultaneously', () => {
+    const store = makeStore({
+      light_test: {
+        image: mockImage,
+        lights: [],
+        camera_view: 'front',
+        rendered_result: null,
+        analysis_status: 'success',
+        depth_result: mockDepthResult,
+        material_result: mockMaterialResult,
+        analysis_error: null,
+      },
+    });
+    renderWithStore(store);
+    expect(screen.queryByText(/Depth data required/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('surface-type-badge')).toBeInTheDocument();
   });
 });

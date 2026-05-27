@@ -4,10 +4,15 @@ import { configureStore } from '@reduxjs/toolkit';
 import lightTestReducer from '../store/slices/lightTestSlice';
 import LightTestWindow from '../components/light_test/LightTestWindow';
 import * as api from '../services/api';
+import * as lightTestApi from '../services/light_test_api';
 import type { ImageMetadata } from '../services/types';
+import type { LightTestAnalysisResponse } from '../services/light_test_api';
 
 jest.mock('../services/api');
+jest.mock('../services/light_test_api');
+
 const mockedApi = api as jest.Mocked<typeof api>;
+const mockedLightTestApi = lightTestApi as jest.Mocked<typeof lightTestApi>;
 
 const mockCtx = {
   clearRect: jest.fn(),
@@ -59,10 +64,35 @@ const mockImage: ImageMetadata = {
   group: 'light_test',
 };
 
+const mockAnalysisResponse: LightTestAnalysisResponse = {
+  status: 'success',
+  depth: {
+    status: 'success',
+    depth_stats: {
+      depth_complexity: 0.5,
+      has_shadow_region: true,
+      depth_range: 0.8,
+      depth_mean: 0.4,
+      depth_gradient_max: 0.35,
+    },
+    depth_map_shape: [100, 100],
+    depth_map_base64: 'abc123',
+    error_message: null,
+  },
+  material: {
+    status: 'success',
+    surface_type: 'metal',
+    material_map: null,
+    confidence: 0.85,
+    error_message: null,
+  },
+};
+
 describe('LightTestWindow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedApi.uploadImage.mockResolvedValue(mockImage);
+    mockedLightTestApi.analyzeLightTestImage.mockResolvedValue(mockAnalysisResponse);
   });
 
   it('renders without crashing', () => {
@@ -245,6 +275,87 @@ describe('LightTestWindow', () => {
     });
     await waitFor(() => {
       expect(screen.queryByTestId('lt-drop-zone')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Analysis state UI tests ────────────────────────────────────────────────
+
+  it('shows lt-analysis-loading while analysis is running', async () => {
+    let resolveAnalysis!: (value: LightTestAnalysisResponse) => void;
+    mockedLightTestApi.analyzeLightTestImage.mockImplementation(
+      () => new Promise(resolve => { resolveAnalysis = resolve; }),
+    );
+    renderWithStore(<LightTestWindow />);
+    const file = new File(['test'], 'test.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('lt-file-input'), { target: { files: [file] } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('lt-analysis-loading')).toBeInTheDocument();
+    });
+    await act(async () => { resolveAnalysis(mockAnalysisResponse); });
+  });
+
+  it('shows lt-analysis-complete when analysis succeeds', async () => {
+    renderWithStore(<LightTestWindow />);
+    const file = new File(['test'], 'test.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('lt-file-input'), { target: { files: [file] } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('lt-analysis-complete')).toBeInTheDocument();
+    });
+  });
+
+  it('shows lt-analysis-complete when analysis is partial', async () => {
+    mockedLightTestApi.analyzeLightTestImage.mockResolvedValue({
+      ...mockAnalysisResponse,
+      status: 'partial',
+    });
+    renderWithStore(<LightTestWindow />);
+    const file = new File(['test'], 'test.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('lt-file-input'), { target: { files: [file] } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('lt-analysis-complete')).toBeInTheDocument();
+    });
+  });
+
+  it('shows lt-analysis-error when analysis throws', async () => {
+    mockedLightTestApi.analyzeLightTestImage.mockRejectedValue(new Error('Analysis failed'));
+    renderWithStore(<LightTestWindow />);
+    const file = new File(['test'], 'test.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('lt-file-input'), { target: { files: [file] } });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('lt-analysis-error')).toBeInTheDocument();
+    });
+  });
+
+  it('calls analyzeLightTestImage with the uploaded file', async () => {
+    renderWithStore(<LightTestWindow />);
+    const file = new File(['test'], 'test.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('lt-file-input'), { target: { files: [file] } });
+    });
+    await waitFor(() => {
+      expect(mockedLightTestApi.analyzeLightTestImage).toHaveBeenCalledWith(file);
+    });
+  });
+
+  it('clearAnalysis dispatched when remove button clicked', async () => {
+    const { store } = renderWithStore(<LightTestWindow />);
+    const file = new File(['test'], 'test.png', { type: 'image/png' });
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('lt-file-input'), { target: { files: [file] } });
+    });
+    await waitFor(() => expect(screen.getByTestId('lt-remove-btn')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('lt-remove-btn'));
+    await waitFor(() => {
+      const state = (store.getState() as { light_test: { analysis_status: string } }).light_test;
+      expect(state.analysis_status).toBe('idle');
     });
   });
 });

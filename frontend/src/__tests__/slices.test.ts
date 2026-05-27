@@ -31,6 +31,10 @@ import lightTestReducer, {
   updateLight,
   setCameraView,
   setRenderedResult,
+  setAnalysisLoading,
+  setAnalysisResult,
+  setAnalysisError,
+  clearAnalysis,
   clearLightTest,
 } from '../store/slices/lightTestSlice';
 import logsReducer, {
@@ -310,6 +314,10 @@ describe('lightTestSlice', () => {
     lights: [],
     camera_view: 'front' as const,
     rendered_result: null,
+    analysis_status: 'idle' as const,
+    depth_result: null,
+    material_result: null,
+    analysis_error: null,
   };
 
   const sampleLight: LightConfig = {
@@ -368,6 +376,66 @@ describe('lightTestSlice', () => {
     const withLight = lightTestReducer(undefined, addLight(sampleLight));
     const result = lightTestReducer(withLight, clearLightTest());
     expect(result).toEqual(initial);
+  });
+
+  it('setAnalysisLoading sets analysis_status to loading', () => {
+    const result = lightTestReducer(undefined, setAnalysisLoading());
+    expect(result.analysis_status).toBe('loading');
+  });
+
+  it('setAnalysisLoading clears depth_result and material_result', () => {
+    const result = lightTestReducer(undefined, setAnalysisLoading());
+    expect(result.depth_result).toBeNull();
+    expect(result.material_result).toBeNull();
+  });
+
+  it('setAnalysisResult sets analysis_status from payload', () => {
+    const result = lightTestReducer(
+      undefined,
+      setAnalysisResult({
+        depth: { status: 'success', depth_stats: null, depth_map_shape: null, depth_map_base64: null, error_message: null },
+        material: { status: 'success', surface_type: 'metal', material_map: null, confidence: 0.9, error_message: null },
+        status: 'success',
+      }),
+    );
+    expect(result.analysis_status).toBe('success');
+  });
+
+  it('setAnalysisResult stores depth_result', () => {
+    const depth = { status: 'success' as const, depth_stats: null, depth_map_shape: null, depth_map_base64: null, error_message: null };
+    const result = lightTestReducer(
+      undefined,
+      setAnalysisResult({ depth, material: { status: 'success', surface_type: null, material_map: null, confidence: null, error_message: null }, status: 'success' }),
+    );
+    expect(result.depth_result).toEqual(depth);
+  });
+
+  it('setAnalysisResult stores material_result', () => {
+    const material = { status: 'success' as const, surface_type: 'plastic', material_map: null, confidence: 0.75, error_message: null };
+    const result = lightTestReducer(
+      undefined,
+      setAnalysisResult({ depth: { status: 'success', depth_stats: null, depth_map_shape: null, depth_map_base64: null, error_message: null }, material, status: 'success' }),
+    );
+    expect(result.material_result).toEqual(material);
+  });
+
+  it('setAnalysisError sets analysis_status to error', () => {
+    const result = lightTestReducer(undefined, setAnalysisError('Connection failed'));
+    expect(result.analysis_status).toBe('error');
+  });
+
+  it('setAnalysisError stores error message', () => {
+    const result = lightTestReducer(undefined, setAnalysisError('Connection failed'));
+    expect(result.analysis_error).toBe('Connection failed');
+  });
+
+  it('clearAnalysis resets analysis fields to idle/null', () => {
+    const withLoading = lightTestReducer(undefined, setAnalysisLoading());
+    const result = lightTestReducer(withLoading, clearAnalysis());
+    expect(result.analysis_status).toBe('idle');
+    expect(result.depth_result).toBeNull();
+    expect(result.material_result).toBeNull();
+    expect(result.analysis_error).toBeNull();
   });
 });
 
