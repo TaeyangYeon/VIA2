@@ -64,7 +64,7 @@
 - [x] Step 46: 컬러 조명 + 편광 시뮬레이션
 
 ## Phase 8: 통합 / 패키징 / 배포
-- [ ] Step 47: 전체 E2E 테스트
+- [x] Step 47: 전체 E2E 테스트
 - [ ] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
@@ -4688,3 +4688,84 @@ tests/test_evaluation_agent.py: 64 passed in 0.14s
 - `frontend/` 디렉토리 누락 → `mkdir frontend` 로 생성 (Step 35 이전 placeholder)
 - `ALGORITHM_WRONG_CATEGORY`는 pipeline 파라미터 제공 시에만 감지됨 (pipeline=None이면 accuracy 기반으로 fallback)
 - align 모드는 per-image 단위 평가 + 전체 failure_reason 단일 값 반환 (inspection 모드와 다른 구조)
+
+---
+
+## Step 47 완료 내역
+
+### 생성된 파일
+
+| 파일 | 종류 | 설명 |
+|------|------|------|
+| `tests/fixtures/__init__.py` | 픽스처 패키지 초기화 | 빈 init 파일 |
+| `tests/fixtures/sample_images/__init__.py` | 이미지 픽스처 패키지 | 빈 init 파일 |
+| `tests/fixtures/sample_images/generate.py` | 합성 이미지 생성기 | OpenCV로 OK/NG/Align 이미지 생성 함수 |
+| `tests/e2e/__init__.py` | E2E 테스트 패키지 | 빈 init 파일 |
+| `tests/e2e/test_inspection_pipeline.py` | Inspection 모드 E2E | 전체 Inspection 파이프라인 E2E 테스트 |
+| `tests/e2e/test_align_pipeline.py` | Align 모드 E2E | 전체 Align 파이프라인 E2E 테스트 |
+| `tests/e2e/test_directive_e2e.py` | Directive E2E | 디렉티브 전파 및 영향 검증 테스트 |
+
+### 테스트 수
+
+| 파일 | Mock E2E 테스트 | Colab E2E 테스트 (수동) |
+|------|----------------|------------------------|
+| `test_inspection_pipeline.py` | 51 | 3 |
+| `test_align_pipeline.py` | 31 | 2 |
+| `test_directive_e2e.py` | 29 | 0 |
+| **합계** | **111** | **5** |
+
+### Mock E2E 테스트 시나리오
+
+**test_inspection_pipeline.py:**
+- `TestE2EInspectionHappyPath` (26개): 전체 Inspection 파이프라인 성공 흐름 — 실제 합성 이미지, 실제 ImageAnalysisAgent, PipelineComposer, AlgorithmSelector, TestAgentInspection, EvaluationAgent 실행; Blueprint SVG/노드/엣지 구조 검증, ParameterSheets 생성 확인
+- `TestE2EInspectionLighting` (6개): LightingAdvisor가 오케스트레이터 출력 scene_context에서 올바른 조명 추천 생성 검증
+- `TestE2EInspectionRetry` (6개): pipeline_bad_fit/bad_params/inspection_plan_issue 실패 → 실제 FeedbackController 전략 결정 → 재시도 성공; spec_issue로 success_criteria 완화 확인
+- `TestE2EInspectionDecision` (9개): max_iterations 초과 → DecisionAgent 호출 → EDGE_LEARNING/DEEP_LEARNING verdict 검증
+- `TestE2EInspectionInputValidation` (4개): 빈 user_text, 빈 images, ng_images 누락, 유효하지 않은 success_criteria 오류 처리
+
+**test_align_pipeline.py:**
+- `TestE2EAlignHappyPath` (15개): 전체 Align 파이프라인 성공 흐름 — 실제 TestAgentAlign, blueprint/plan/parameter_sheets 없음 확인
+- `TestE2EAlignFallbackChain` (6개): Template → Edge → Caliper fallback 체인 직접 검증, method_stats 확인, 좌표 오류 비음수 확인
+- `TestE2EAlignDecision` (9개): max_iterations 초과 → HARDWARE_IMPROVEMENT verdict, confidence=1.0 확인
+- `TestE2EAlignInputValidation` (1개): ROI 없이 Align 모드 실패 처리
+
+**test_directive_e2e.py:**
+- `TestDirectivePropagationAtBuild` (12개): 각 디렉티브가 올바른 에이전트에 저장 확인, 독립성 확인
+- `TestDirectiveInfluenceOnBehavior` (8개): strict/lenient 디렉티브가 임계값 조정, clahe 디렉티브가 파이프라인 변경, 디렉티브가 run() 인수로 전달 확인
+- `TestDirectiveDefaults` (6개): 빈 디렉티브 = 에이전트 기본 자체 판단, 모든 출력 필드 완전성 확인
+- `TestDirectiveDifferentBehavior` (3개): 다른 디렉티브 값 → 다른 동작 검증
+
+### Colab E2E 테스트 시나리오 (수동 실행)
+
+실제 Colab 서버가 실행 중일 때 COLAB_URL 환경 변수를 설정하여 수동 실행:
+
+```bash
+COLAB_URL=https://<your-colab-url> python -m pytest tests/e2e/ -m colab -v
+```
+
+| 테스트 | 설명 |
+|--------|------|
+| `test_colab_inspection_happy_path` | 실제 AI 서버로 Inspection 파이프라인 실행 |
+| `test_colab_inspection_blueprint_generated` | 실제 LLM으로 Blueprint 생성 확인 |
+| `test_colab_inspection_lighting_suggestions` | 실제 scene_context에서 조명 추천 생성 |
+| `test_colab_align_happy_path` | 실제 AI 서버로 Align 파이프라인 실행 |
+| `test_colab_align_no_blueprint_in_result` | Align 모드 Blueprint 없음 확인 |
+
+### Mock 전략 요약
+
+- **원격 AI 에이전트 (Mock)**: SpecAgent, DepthAgent, MaterialAgent, VisionJudgeAgent, InspectionPlanAgent, BlueprintAgent, DecisionAgent
+- **로컬/규칙 기반 에이전트 (실제 실행)**: ImageAnalysisAgent, ROIAgent (manual mode), PipelineComposer, ParameterSearcher, PipelineSelector, AlgorithmSelector, TestAgentInspection, TestAgentAlign, EvaluationAgent, FeedbackController, ParameterSheetGenerator, LightingAdvisor
+
+### pytest 결과
+
+```
+전체 테스트 스위트: 1869 passed, 10 skipped (기존 5 + 새 Colab 5)
+새 E2E 테스트: 111 passed, 5 skipped
+기존 테스트: 1758 passed, 5 skipped (회귀 없음)
+```
+
+### 주의사항
+
+- `pyproject.toml`에 `colab` 마커 추가 (CI에서는 자동 스킵됨)
+- Pyright 타입 경고: `AsyncMock`의 `call_args`, `assert_called_once` 등은 런타임에는 정상 작동하나 정적 분석기가 인식하지 못하는 false positive
+- `PipelineComposer.run`은 실제 함수이므로 call_count 직접 접근 불가 → 래퍼 카운터 패턴 사용

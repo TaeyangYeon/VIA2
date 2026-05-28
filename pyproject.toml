@@ -15,4 +15,5 @@ dev = ["pytest>=7.0"]
 testpaths = ["tests"]
 markers = [
     "integration: tests that require external services (Ollama, remote APIs)",
+    "colab: tests that require a live Colab AI server (set COLAB_URL env var)",
 ]
