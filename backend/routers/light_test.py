@@ -1,6 +1,7 @@
-"""Light Test analysis and PBR rendering router (Steps 43, 45)."""
+"""Light Test analysis, PBR rendering, histogram, and preset router (Steps 43–48)."""
 import asyncio
 import base64
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,16 @@ from backend.models.engine import EngineMode
 from backend.services import engine_store, image_store
 
 router = APIRouter()
+
+# ── module-level preset store ─────────────────────────────────────────────────
+_presets: dict[str, dict] = {}
+
+
+class PresetSaveRequest(BaseModel):
+    name: str
+    lights: list[dict]
+    lens_polarizer_angle: float = 0.0
+    description: str = ""
 
 
 class RenderRequest(BaseModel):
@@ -169,3 +180,47 @@ async def compute_light_test_histogram(request: HistogramRequest) -> dict[str, A
         raise HTTPException(status_code=422, detail="Failed to decode image")
 
     return compute_histogram(image)
+
+
+# ── preset endpoints ──────────────────────────────────────────────────────────
+
+@router.post("/light_test/preset/save")
+async def save_preset(request: PresetSaveRequest) -> dict[str, Any]:
+    created_at = datetime.now(timezone.utc).isoformat()
+    _presets[request.name] = {
+        "name": request.name,
+        "lights": request.lights,
+        "lens_polarizer_angle": request.lens_polarizer_angle,
+        "description": request.description,
+        "created_at": created_at,
+    }
+    return {"status": "saved", "name": request.name, "created_at": created_at}
+
+
+@router.get("/light_test/preset/list")
+async def list_presets() -> dict[str, Any]:
+    return {
+        "presets": [
+            {
+                "name": p["name"],
+                "description": p["description"],
+                "created_at": p["created_at"],
+            }
+            for p in _presets.values()
+        ]
+    }
+
+
+@router.get("/light_test/preset/{name}")
+async def get_preset(name: str) -> dict[str, Any]:
+    if name not in _presets:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    return _presets[name]
+
+
+@router.delete("/light_test/preset/{name}")
+async def delete_preset(name: str) -> dict[str, Any]:
+    if name not in _presets:
+        raise HTTPException(status_code=404, detail="Preset not found")
+    del _presets[name]
+    return {"status": "deleted", "name": name}

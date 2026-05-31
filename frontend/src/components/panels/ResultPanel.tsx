@@ -5,6 +5,7 @@ import BlueprintViewer from '../BlueprintViewer';
 import ParameterSheet from '../ParameterSheet';
 import MetricsChart from '../MetricsChart';
 import LightingSuggestion from '../LightingSuggestion';
+import ExportButton from '../ExportButton';
 
 const DECISION_LABELS: Record<string, { label: string; color: string }> = {
   rule_based_ok:  { label: 'Rule-Based OK',                 color: '#4ade80' },
@@ -15,6 +16,8 @@ const DECISION_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function ResultPanel() {
   const result = useAppSelector(s => s.result);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const executionId: string | null = useAppSelector((s: any) => s.execution?.execution_id ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   const hasResult =
@@ -160,6 +163,9 @@ export default function ResultPanel() {
           </ul>
         </div>
       )}
+
+      {/* API-based export (available after pipeline run) */}
+      {executionId && <ExportButton executionId={executionId} />}
     </div>
   );
 }

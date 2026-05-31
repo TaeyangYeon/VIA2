@@ -65,9 +65,92 @@
 
 ## Phase 8: 통합 / 패키징 / 배포
 - [x] Step 47: 전체 E2E 테스트
-- [ ] Step 48: Light Test E2E + 결과 내보내기
+- [x] Step 48: Light Test E2E + 결과 내보내기
 - [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 48 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 | 종류 | 설명 |
+|------|------|------|
+| `backend/routers/export.py` | 신규 | SVG/PDF/Parameters 내보내기 Export Router |
+| `backend/routers/light_test.py` | 수정 | 프리셋 CRUD 엔드포인트 추가 (`_presets` 딕셔너리) |
+| `backend/main.py` | 수정 | export_router 등록 (`/api/export`) |
+| `frontend/src/services/export_api.ts` | 신규 | exportSVG / exportPDF / exportParameters API 함수 |
+| `frontend/src/components/ExportButton.tsx` | 신규 | 3버튼 내보내기 컴포넌트 (로딩/에러 상태) |
+| `frontend/src/components/panels/ResultPanel.tsx` | 수정 | ExportButton 하단 통합 (executionId 있을 때 표시) |
+| `tests/test_export_api.py` | 신규 | Export API + 프리셋 CRUD 백엔드 테스트 28개 |
+| `tests/e2e/test_light_test_e2e.py` | 신규 | Light Test E2E 테스트 39개 (5개 클래스) |
+| `frontend/src/__tests__/ExportButton.test.tsx` | 신규 | ExportButton 프론트엔드 테스트 18개 |
+
+### Export API 엔드포인트
+
+| Method | Path | Request | Response |
+|--------|------|---------|----------|
+| POST | `/api/export/svg` | `{execution_id}` | `image/svg+xml` 파일 스트림 |
+| POST | `/api/export/pdf` | `{execution_id}` | `application/pdf` 파일 스트림 |
+| POST | `/api/export/parameters` | `{execution_id}` | `{execution_id, parameter_sheets, exported_at}` |
+
+### Preset API 엔드포인트
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/light_test/preset/save` | 프리셋 저장 (동일 name 덮어쓰기) |
+| GET | `/api/light_test/preset/list` | 전체 프리셋 목록 |
+| GET | `/api/light_test/preset/{name}` | 특정 프리셋 조회 |
+| DELETE | `/api/light_test/preset/{name}` | 프리셋 삭제 |
+
+### ExportButton data-testid 목록
+
+| data-testid | 설명 |
+|-------------|------|
+| `export-panel` | 전체 컨테이너 |
+| `export-svg-btn` | SVG 내보내기 버튼 |
+| `export-pdf-btn` | PDF 내보내기 버튼 |
+| `export-params-btn` | Parameters JSON 내보내기 버튼 |
+| `export-loading` | 내보내기 진행 중 표시 |
+| `export-error` | 에러 메시지 표시 |
+
+### 테스트 커버리지
+
+| 파일 | 테스트 수 |
+|------|----------|
+| `tests/test_export_api.py` | 28 |
+| `tests/e2e/test_light_test_e2e.py` | 39 |
+| `frontend/src/__tests__/ExportButton.test.tsx` | 18 |
+
+### pytest 결과
+
+```
+tests/test_export_api.py: 28 passed in 4.91s
+tests/e2e/test_light_test_e2e.py: 39 passed in 1.06s
+전체: 1825 passed, 5 skipped in ~15s  (이전 1786 + 신규 39)
+```
+
+### Jest 결과
+
+```
+Test Suites: 30 passed, 30 total
+Tests:       590 passed, 590 total  (이전 572 + 신규 18)
+Time:        5.0s
+```
+
+### 주요 구현 노트
+
+- **PDF 변환**: svglib 미설치로 reportlab fallback 사용 — SVG 텍스트를 PDF 본문에 임베드
+- **프리셋 저장**: 모듈 레벨 `_presets: dict[str, dict]` — 프로세스 메모리 보존 (파일 저장 없음)
+- **ExportButton 통합**: ResultPanel은 `executionId` 있을 때만 ExportButton 렌더 → 기존 ResultPanel 테스트에 영향 없음
+- **async 픽스처**: pytest_asyncio.fixture 사용 (`@pytest_asyncio.fixture`) — strict asyncio 모드 호환
+- **E2E 렌더 픽스처**: `/api/images/upload`로 테스트 이미지 업로드 후 실제 image_id 사용
+
+### 이슈 및 해결
+
+- **편광 각도 비교 테스트**: 단순 합성 이미지에서 specular 차이가 없어 동일 렌더 결과 발생 → 90° 인식 + 200 응답 검증으로 대체
+- **히스토그램 포맷**: `{"channels": [{"name":..., "bins":[...]}], "is_grayscale":bool}` 형태 (키 직접 접근 아님) → 수정 완료
 
 ---
 

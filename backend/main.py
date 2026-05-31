@@ -9,6 +9,7 @@ from backend.routers.directives import router as directives_router
 from backend.routers.execute import router as execute_router
 from backend.routers.logs import router as logs_router
 from backend.routers.light_test import router as light_test_router
+from backend.routers.export import router as export_router
 
 app = FastAPI(title=settings.app_name, version=settings.version)
 
@@ -28,6 +29,7 @@ app.include_router(directives_router, prefix="/api")
 app.include_router(logs_router, prefix="/api")
 app.include_router(execute_router, prefix="/api")
 app.include_router(light_test_router, prefix="/api")
+app.include_router(export_router, prefix="/api/export", tags=["export"])
 
 
 @app.get("/health")
