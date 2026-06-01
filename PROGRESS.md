@@ -1,6 +1,6 @@
 # VIA2 Progress
 
-## 현재 진행 단계: Step 46 (완료)
+## 현재 진행 단계: Step 49 (완료)
 
 ## Phase 1: 환경 설정
 - [x] Step 1: Python 환경 + 프로젝트 디렉토리 초기화
@@ -66,8 +66,97 @@
 ## Phase 8: 통합 / 패키징 / 배포
 - [x] Step 47: 전체 E2E 테스트
 - [x] Step 48: Light Test E2E + 결과 내보내기
-- [ ] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
+- [x] Step 49: FastAPI 자동 시작 + macOS DMG 패키징
 - [ ] Step 50: 문서화 + 최종 통합 테스트
+
+---
+
+## Step 49 완료 내역
+
+### 생성/수정된 파일
+
+| 파일 | 종류 | 설명 |
+|------|------|------|
+| `frontend/main.js` | 수정 | `startBackend()`, `checkEngineHealth()`, `before-quit` 정리, `retry-engine-check` IPC 핸들러 추가 |
+| `frontend/preload.js` | 수정 | `onEngineStatus`, `removeEngineStatusListener`, `retryEngineCheck` contextBridge 추가 |
+| `frontend/src/App.tsx` | 수정 | engine-status IPC 리스너 + EngineSetupGuide 모달 연동 |
+| `frontend/src/components/EngineSetupGuide.tsx` | 신규 | AI 엔진 설정 안내 모달 (local/remote 모드) |
+| `frontend/electron-builder.yml` | 신규 | macOS Intel x86_64 DMG 패키징 설정 |
+| `build/icons/icon.png` | 신규 | 512×512 플레이스홀더 아이콘 (OpenCV 생성) |
+| `build/icons/icon.icns` | 신규 | macOS 아이콘 플레이스홀더 |
+| `build/icons/icon.ico` | 신규 | Windows 아이콘 플레이스홀더 |
+| `tests/test_step49_packaging.py` | 신규 | 패키징 아티팩트 smoke 테스트 5개 |
+| `frontend/src/__tests__/EngineSetupGuide.test.tsx` | 신규 | EngineSetupGuide 컴포넌트 테스트 18개 |
+
+### main.js 변경 사항
+
+| 기능 | 설명 |
+|------|------|
+| `startBackend()` | `python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000` spawn (child_process), stdout/stderr `[backend]` 프리픽스 로깅 |
+| `checkEngineHealth(win)` | `~/.via2/engine_config.json` 읽기 → Ollama `/api/tags` 또는 remote `/health` GET, 3초 timeout → `engine-status` IPC 전송 |
+| `before-quit` cleanup | backendProcess SIGTERM → 2초 후 SIGKILL fallback |
+| `retry-engine-check` IPC | 렌더러 요청 시 mainWindow에 대해 `checkEngineHealth()` 재실행 |
+| app.whenReady 순서 | `buildMenu()` → `startBackend()` → `createWindow()` |
+
+### electron-builder.yml 주요 설정
+
+| 항목 | 값 |
+|------|-----|
+| appId | `com.via2.app` |
+| mac.target | `dmg` (arch: `x64`) |
+| icon | `build/icons/icon.icns` |
+| category | `public.app-category.developer-tools` |
+| extraResources | `backend/**`, `agents/**`, `light_test/**`, `requirements.txt` |
+
+### EngineSetupGuide 컴포넌트
+
+**Props 인터페이스:**
+```typescript
+interface EngineSetupGuideProps {
+  isOpen: boolean;
+  engineMode: 'local' | 'remote';
+  remoteUrl?: string;
+  onClose: () => void;
+  onRetry: () => void;
+}
+```
+
+**data-testid 목록:**
+
+| data-testid | 설명 |
+|-------------|------|
+| `engine-setup-guide` | 모달 루트 컨테이너 |
+| `engine-setup-mode-label` | 현재 엔진 모드 배지 |
+| `engine-setup-retry-btn` | 재시도 버튼 |
+| `engine-setup-continue-btn` | Continue Anyway 버튼 |
+
+### preload.js 추가 API
+
+| 메서드 | 설명 |
+|--------|------|
+| `onEngineStatus(callback)` | `engine-status` IPC 이벤트 구독 |
+| `removeEngineStatusListener()` | `engine-status` 리스너 제거 |
+| `retryEngineCheck()` | 메인 프로세스에 재점검 요청 |
+
+### pytest 결과
+
+```
+tests/test_step49_packaging.py: 5 passed in 0.03s
+전체(--ignore=tests/e2e): 1791 passed, 5 skipped in 8.92s  (이전 1786 + 신규 5)
+```
+
+### Jest 결과
+
+```
+Test Suites: 31 passed, 31 total
+Tests:       608 passed, 608 total  (이전 590 + 신규 18)
+Time:        5.06s
+```
+
+### 이슈 및 해결
+
+- **window.electronAPI 타입**: `(window as unknown as { electronAPI?: ElectronAPI }).electronAPI` 캐스트 패턴 사용 (기존 LightingSuggestion.tsx 패턴 일치)
+- **checkEngineHealth 타이밍**: `createWindow()` 후 바로 호출 대신 `ready-to-show` 이벤트 핸들러에서 호출 — 렌더러가 준비되기 전에 IPC 전송되면 메시지 유실됨
 
 ---
 
